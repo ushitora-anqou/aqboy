@@ -3,6 +3,7 @@ package cpu
 import (
 	"fmt"
 	"log"
+	"math/bits"
 
 	"github.com/ushitora-anqou/aqboy/mmu"
 )
@@ -27,6 +28,14 @@ func regBC_DE_HL_AF_ToStr(index uint8) string {
 	return []string{"BC", "DE", "HL", "AF"}[index]
 }
 
+func cc2str(index uint8, needTailComma bool) string {
+	if needTailComma {
+		return []string{"", "NZ, ", "Z, ", "NC, ", "C, "}[index]
+	} else {
+		return []string{"", "NZ", "Z", "NC", "C"}[index]
+	}
+}
+
 func compl(v uint8) uint8 {
 	return 0xff ^ v
 }
@@ -40,6 +49,34 @@ func b2u8(b bool) uint8 {
 
 func bitN8(n uint8, index int) bool {
 	return ((n >> index) & 1) != 0
+}
+
+func rotateRight8(x uint8, k int) uint8 {
+	// Thanks to: https://cs.opensource.google/go/go/+/refs/tags/go1.17.6:src/math/bits/bits.go;l=181
+	const n = 8
+	s := uint(k) & (n - 1)
+	return (x >> s) | (x << (n - s))
+}
+
+func add12(xu16, yu16 uint16, carry bool) (uint16, bool) {
+	// Thanks to: https://cs.opensource.google/go/go/+/refs/tags/go1.17.6:src/math/bits/bits.go;l=354
+	x, y := xu16&0x0fff, yu16&0x0fff
+	sum := x + y
+	if carry {
+		sum += 1
+	}
+	carryOut := (((x & y) | ((x | y) &^ sum)) >> 11) != 0
+	return sum, carryOut
+}
+
+func add16(x, y uint16, carry bool) (uint16, bool) {
+	// Thanks to: https://cs.opensource.google/go/go/+/refs/tags/go1.17.6:src/math/bits/bits.go;l=354
+	sum := x + y
+	if carry {
+		sum += 1
+	}
+	carryOut := (((x & y) | ((x | y) &^ sum)) >> 15) != 0
+	return sum, carryOut
 }
 
 func add8(x, y uint8, carry bool) (uint8, bool) {
@@ -332,6 +369,100 @@ func (cpu *CPU) decReg(mmu *mmu.MMU, reg uint8) (uint8, bool) {
 	return res, halfCarry
 }
 
+func (cpu *CPU) addA(rhs uint8) {
+	res, c := add8(cpu.A(), rhs, false)
+	_, h := add4(cpu.A(), rhs, false)
+	cpu.SetA(res)
+	cpu.SetFlagZNHC(res == 0, false, h, c)
+}
+
+func (cpu *CPU) adcA(rhs uint8) {
+	res, c := add8(cpu.A(), rhs, cpu.FlagC())
+	_, h := add4(cpu.A(), rhs, cpu.FlagC())
+	cpu.SetA(res)
+	cpu.SetFlagZNHC(res == 0, false, h, c)
+}
+
+func (cpu *CPU) subA(rhs uint8) {
+	res, c := sub8(cpu.A(), rhs, false)
+	_, h := sub4(cpu.A(), rhs, false)
+	cpu.SetA(res)
+	cpu.SetFlagZNHC(res == 0, true, h, c)
+}
+
+func (cpu *CPU) sbcA(rhs uint8) {
+	res, c := sub8(cpu.A(), rhs, cpu.FlagC())
+	_, h := sub4(cpu.A(), rhs, cpu.FlagC())
+	cpu.SetA(res)
+	cpu.SetFlagZNHC(res == 0, true, h, c)
+}
+
+func (cpu *CPU) andA(rhs uint8) {
+	res := cpu.A() & rhs
+	cpu.SetA(res)
+	cpu.SetFlagZNHC(res == 0, false, true, false)
+}
+
+func (cpu *CPU) xorA(rhs uint8) {
+	res := cpu.A() ^ rhs
+	cpu.SetA(res)
+	cpu.SetFlagZNHC(res == 0, false, false, false)
+}
+
+func (cpu *CPU) orA(rhs uint8) {
+	res := cpu.A() | rhs
+	cpu.SetA(res)
+	cpu.SetFlagZNHC(res == 0, false, false, false)
+}
+
+func (cpu *CPU) cpA(rhs uint8) {
+	src := cpu.A()
+	cpu.subA(rhs)
+	cpu.SetA(src) // restore
+}
+
+func (cpu *CPU) rlc(val uint8) (res uint8, carry bool) {
+	res = bits.RotateLeft8(val, 1)
+	carry = bitN8(val, 7)
+	return
+}
+
+func (cpu *CPU) rrc(val uint8) (res uint8, carry bool) {
+	res = rotateRight8(val, 1)
+	carry = bitN8(val, 0)
+	return
+}
+
+func (cpu *CPU) rl(val uint8) (res uint8, carry bool) {
+	res = val<<1 | b2u8(cpu.FlagC())
+	carry = bitN8(val, 7)
+	return
+}
+
+func (cpu *CPU) rr(val uint8) (res uint8, carry bool) {
+	res = b2u8(cpu.FlagC())<<7 | val>>1
+	carry = bitN8(val, 0)
+	return
+}
+
+func (cpu *CPU) sla(val uint8) (res uint8, carry bool) {
+	res = val << 1
+	carry = bitN8(val, 7)
+	return
+}
+
+func (cpu *CPU) sra(val uint8) (res uint8, carry bool) {
+	res = val>>1 | val&0x80 /* sign extension */
+	carry = bitN8(val, 0)
+	return
+}
+
+func (cpu *CPU) srl(val uint8) (res uint8, carry bool) {
+	res = val >> 1
+	carry = bitN8(val, 0)
+	return
+}
+
 func (cpu *CPU) push16(mmu *mmu.MMU, val uint16) {
 	sp := cpu.SP()
 	sp -= 2
@@ -347,6 +478,74 @@ func (cpu *CPU) pop16(mmu *mmu.MMU) uint16 {
 	return val
 }
 
+func (cpu *CPU) stepCB(mmu *mmu.MMU) {
+	opcode := mmu.Get8(cpu.PC())
+	reg := opcode % 8
+	regVal := cpu.getReg(mmu, reg)
+	res := regVal
+	z, n, h, c := cpu.FlagZ(), cpu.FlagN(), cpu.FlagH(), cpu.FlagC()
+
+	switch {
+	case 0x00 <= opcode && opcode <= 0x07: // RLC (B|C|D|E|H|L|(HL)|A)
+		dbgpr("0x%04x: RLC %s", cpu.PC(), reg2str(reg))
+		res, c = cpu.rlc(regVal)
+		z, n, h = res == 0, false, false
+
+	case 0x08 <= opcode && opcode <= 0x0f: // RRC (B|C|D|E|H|L|(HL)|A)
+		dbgpr("0x%04x: RRC %s", cpu.PC(), reg2str(reg))
+		res, c = cpu.rrc(regVal)
+		z, n, h = res == 0, false, false
+
+	case 0x10 <= opcode && opcode <= 0x17: // RL (B|C|D|E|H|L|(HL)|A)
+		dbgpr("0x%04x: RL %s", cpu.PC(), reg2str(reg))
+		res, c = cpu.rl(regVal)
+		z, n, h = res == 0, false, false
+
+	case 0x18 <= opcode && opcode <= 0x1f: // RR (B|C|D|E|H|L|(HL)|A)
+		dbgpr("0x%04x: RR %s", cpu.PC(), reg2str(reg))
+		res, c = cpu.rr(regVal)
+		z, n, h = res == 0, false, false
+
+	case 0x20 <= opcode && opcode <= 0x27: // SLA (B|C|D|E|H|L|(HL)|A)
+		dbgpr("0x%04x: SLA %s", cpu.PC(), reg2str(reg))
+		res, c = cpu.sla(regVal)
+		z, n, h = res == 0, false, false
+
+	case 0x28 <= opcode && opcode <= 0x2f: // SRA (B|C|D|E|H|L|(HL)|A)
+		dbgpr("0x%04x: SRA %s", cpu.PC(), reg2str(reg))
+		res, c = cpu.sra(regVal)
+		z, n, h = res == 0, false, false
+
+	case 0x30 <= opcode && opcode <= 0x37: // SWAP (B|C|D|E|H|L|(HL)|A)
+		dbgpr("0x%04x: SWAP %s", cpu.PC(), reg2str(reg))
+		res = (regVal >> 4) | (regVal << 4)
+		z, n, h, c = res == 0, false, false, false
+
+	case 0x38 <= opcode && opcode <= 0x3f: // SRL (B|C|D|E|H|L|(HL)|A)
+		dbgpr("0x%04x: SRL %s", cpu.PC(), reg2str(reg))
+		res, c = cpu.srl(regVal)
+		z, n, h = res == 0, false, false
+
+	case 0x40 <= opcode && opcode <= 0x7f: // BIT 0-7, (B|C|D|E|H|L|(HL)|A)
+		index := (opcode - 0x40) / 8
+		dbgpr("0x%04x: BIT %d, %s", cpu.PC(), index, reg2str(reg))
+		z, n, h, c = !bitN8(regVal, int(index)), false, true, cpu.FlagC()
+
+	case 0x80 <= opcode && opcode <= 0xbf: // RES 0-7, (B|C|D|E|H|L|(HL)|A)
+		index := (opcode - 0x80) / 8
+		dbgpr("0x%04x: RES %d, %s", cpu.PC(), index, reg2str(reg))
+		res = regVal ^ (1 << index)
+
+	case 0xc0 <= opcode && opcode <= 0xff: // SET 0-7, (B|C|D|E|H|L|(HL)|A)
+		index := (opcode - 0xc0) / 8
+		dbgpr("0x%04x: SET %d, %s", cpu.PC(), index, reg2str(reg))
+		res = regVal | (1 << index)
+	}
+	cpu.setReg(mmu, reg, res)
+	cpu.SetFlagZNHC(z, n, h, c)
+	cpu.IncPC(1)
+}
+
 func (cpu *CPU) Step(mmu *mmu.MMU) error {
 	opcode := mmu.Get8(cpu.PC())
 	opLow := opcode & 0x0f
@@ -356,31 +555,16 @@ func (cpu *CPU) Step(mmu *mmu.MMU) error {
 
 	switch {
 	case opcode == 0x00: // NOP
-		dbgpr("0x%08x: NOP", cpu.PC())
+		dbgpr("0x%04x: NOP", cpu.PC())
 		cpu.IncPC(1)
 
-	case opcode == 0x76: // HALT
-		dbgpr("0x%08x: HALT", cpu.PC())
-		return fmt.Errorf("HALT is not supported yet")
-
-	case opcode == 0x18 || // JR r8
-		((opLow == 0 || opLow == 8) && (opHigh == 2 || opHigh == 3)): // JR (NZ|Z|NC|C), r8
-		dbgpr("0x%08x: JR %s0x%x", cpu.PC(),
-			[]string{"", "NZ, ", "Z, ", "NC, ", "C, "}[(opcode-0x18)>>3], imm8)
-		if opcode == 0x18 ||
-			(opcode == 0x20 && !cpu.FlagZ()) || (opcode == 0x28 && cpu.FlagZ()) ||
-			(opcode == 0x30 && !cpu.FlagC()) || (opcode == 0x38 && cpu.FlagC()) {
-			cpu.IncPC(int(int8(imm8)))
-		}
-		cpu.IncPC(2)
-
 	case opLow == 0x01 && (0 <= opHigh && opHigh <= 3): // LD (BC|DE|HL|SP), d16
-		dbgpr("0x%08x: LD %s, 0x%x", cpu.PC(), regBC_DE_HL_SP_ToStr(opHigh), imm16)
+		dbgpr("0x%04x: LD %s, 0x%x", cpu.PC(), regBC_DE_HL_SP_ToStr(opHigh), imm16)
 		cpu.setReg16(mmu, opHigh, imm16, true)
 		cpu.IncPC(3)
 
 	case opLow == 0x02 && (0 <= opHigh && opHigh <= 3): // LD ((BC)|(DE)|(HL+)|(HL-)), A
-		dbgpr("0x%08x: LD (%s), A", cpu.PC(), regBC_DE_HLPLUS_HLMINUS_ToStr(opHigh))
+		dbgpr("0x%04x: LD (%s), A", cpu.PC(), regBC_DE_HLPLUS_HLMINUS_ToStr(opHigh))
 		switch opHigh {
 		case 0:
 			mmu.Set8(cpu.BC(), cpu.A())
@@ -395,8 +579,71 @@ func (cpu *CPU) Step(mmu *mmu.MMU) error {
 		}
 		cpu.IncPC(1)
 
-	case opLow == 0x0a && (0 <= opHigh && opHigh <= 3): // LD A, ((BC)|(DE)|(HL+)|(HL-))
-		dbgpr("0x%08x: LD A, (%s)", cpu.PC(), regBC_DE_HLPLUS_HLMINUS_ToStr(opHigh))
+	case (opLow == 0x3) && (0 <= opHigh && opHigh <= 3): // INC (BC|DE|HL|SP)
+		index := opHigh
+		dbgpr("0x%04x: INC %s", cpu.PC(), regBC_DE_HL_SP_ToStr(index))
+		val := cpu.getReg16(index, true)
+		cpu.setReg16(mmu, index, val+1, true)
+		cpu.IncPC(1)
+
+	case (opLow%8 == 4) && (0 <= opHigh && opHigh <= 3): // INC (B|C|D|E|H|L|(HL)|A)
+		reg := (opcode - 0x04) / 8
+		dbgpr("0x%04x: INC %s", cpu.PC(), reg2str(reg))
+		val, halfCarry := cpu.incReg(mmu, reg)
+		cpu.SetFlagZNHC(val == 0, false, halfCarry, cpu.FlagC())
+		cpu.IncPC(1)
+
+	case (opLow%8 == 5) && (0 <= opHigh && opHigh <= 3): // DEC (B|C|D|E|H|L|(HL)|A)
+		reg := (opcode - 0x05) / 8
+		dbgpr("0x%04x: DEC %s", cpu.PC(), reg2str(reg))
+		val, halfCarry := cpu.decReg(mmu, reg)
+		cpu.SetFlagZNHC(val == 0, true, halfCarry, cpu.FlagC())
+		cpu.IncPC(1)
+
+	case (opLow%8 == 6) && (0 <= opHigh && opHigh <= 3): // LD (B|C|D|E|H|L|(HL)|A), d8
+		reg := (opcode - 0x06) / 8
+		dbgpr("0x%04x: LD %s, 0x%x", cpu.PC(), reg2str(reg), imm8)
+		cpu.setReg(mmu, reg, imm8)
+		cpu.IncPC(2)
+
+	case (opLow%8 == 7) && (0 <= opHigh && opHigh <= 1): // RLCA|RRCA|RLA|RRA
+		var res uint8
+		var carry bool
+		switch opcode {
+		case 0x07: // RLCA
+			dbgpr("0x%04x: RLCA", cpu.PC())
+			res, carry = cpu.rlc(cpu.A())
+		case 0x0f: // RRCA
+			dbgpr("0x%04x: RRCA", cpu.PC())
+			res, carry = cpu.rrc(cpu.A())
+		case 0x18: // RLA
+			dbgpr("0x%04x: RLA", cpu.PC())
+			res, carry = cpu.rl(cpu.A())
+		case 0x1f: // RRA
+			dbgpr("0x%04x: RRA", cpu.PC())
+			res, carry = cpu.rr(cpu.A())
+		}
+		cpu.SetA(res)
+		cpu.SetFlagZNHC(res == 0, false, false, carry)
+		cpu.IncPC(1)
+
+	case opcode == 0x08: // LD (a16), SP
+		dbgpr("0x%04x: LD (0x%04x), SP", cpu.PC(), imm16)
+		mmu.Set16(imm16, cpu.SP())
+		cpu.IncPC(3)
+
+	case (opLow == 0x9) && (0 <= opHigh && opHigh <= 3): // ADD HL, (BC|DE|HL|SP)
+		index := opHigh
+		dbgpr("0x%04x: ADD HL, %s", cpu.PC(), regBC_DE_HL_SP_ToStr(index))
+		rhs := cpu.getReg16(index, true)
+		res, carry := add16(cpu.HL(), rhs, false)
+		_, halfCarry := add12(cpu.HL(), rhs, false)
+		cpu.SetHL(res)
+		cpu.SetFlagZNHC(cpu.FlagZ(), false, halfCarry, carry)
+		cpu.IncPC(1)
+
+	case opLow == 0xa && (0 <= opHigh && opHigh <= 3): // LD A, ((BC)|(DE)|(HL+)|(HL-))
+		dbgpr("0x%04x: LD A, (%s)", cpu.PC(), regBC_DE_HLPLUS_HLMINUS_ToStr(opHigh))
 		switch opHigh {
 		case 0:
 			cpu.SetA(mmu.Get8(cpu.BC()))
@@ -411,154 +658,215 @@ func (cpu *CPU) Step(mmu *mmu.MMU) error {
 		}
 		cpu.IncPC(1)
 
-	case (opLow == 0x3) && (0 <= opHigh && opHigh <= 3): // INC (BC|DE|HL|SP)
-		index := opHigh
-		dbgpr("0x%08x: INC %s", cpu.PC(), regBC_DE_HL_SP_ToStr(index))
-		val := cpu.getReg16(index, true)
-		cpu.setReg16(mmu, index, val+1, true)
-		cpu.IncPC(1)
+	case opcode == 0x10: // STOP
+		dbgpr("0x%04x: STOP", cpu.PC())
+		cpu.IncPC(2)
 
 	case (opLow == 0xb) && (0 <= opHigh && opHigh <= 3): // DEC (BC|DE|HL|SP)
 		index := opHigh
-		dbgpr("0x%08x: DEC %s", cpu.PC(), regBC_DE_HL_SP_ToStr(index))
+		dbgpr("0x%04x: DEC %s", cpu.PC(), regBC_DE_HL_SP_ToStr(index))
 		val := cpu.getReg16(index, true)
 		cpu.setReg16(mmu, index, val-1, true)
 		cpu.IncPC(1)
 
-	case (opLow%8 == 4) && (0 <= opHigh && opHigh <= 3): // INC (B|C|D|E|H|L|(HL)|A)
-		reg := opHigh*2 + (opLow-4)/8
-		dbgpr("0x%08x: INC %s", cpu.PC(), reg2str(reg))
-		val, halfCarry := cpu.incReg(mmu, reg)
-		cpu.SetFlagZNHC(val == 0, false, halfCarry, cpu.FlagC())
-		cpu.IncPC(1)
-
-	case (opLow%8 == 5) && (0 <= opHigh && opHigh <= 3): // DEC (B|C|D|E|H|L|(HL)|A)
-		reg := opHigh*2 + (opLow-5)/8
-		dbgpr("0x%08x: DEC %s", cpu.PC(), reg2str(reg))
-		val, halfCarry := cpu.decReg(mmu, reg)
-		cpu.SetFlagZNHC(val == 0, true, halfCarry, cpu.FlagC())
-		cpu.IncPC(1)
-
-	case opLow == 0x0e && (0 <= opHigh && opHigh <= 3): // LD (C|E|L|A), d8
-		reg := opHigh*2 + 1
-		dbgpr("0x%08x: LD %s, 0x%x", cpu.PC(), reg2str(reg), imm8)
-		cpu.setReg(mmu, reg, imm8)
+	case opcode == 0x18 || // JR r8
+		((opLow == 0 || opLow == 8) && (opHigh == 2 || opHigh == 3)): // JR (NZ|Z|NC|C), r8
+		dbgpr("0x%04x: JR %s0x%x", cpu.PC(), cc2str((opcode-0x18)/8, true), imm8)
+		if opcode == 0x18 ||
+			(opcode == 0x20 && !cpu.FlagZ()) || (opcode == 0x28 && cpu.FlagZ()) ||
+			(opcode == 0x30 && !cpu.FlagC()) || (opcode == 0x38 && cpu.FlagC()) {
+			cpu.IncPC(int(int8(imm8)))
+		}
 		cpu.IncPC(2)
 
 	case 0x40 <= opcode && opcode <= 0x7f && opcode != 0x76 /* not HALT */ : // LD reg1,reg2
 		reg1 := (opcode & 0x3f) >> 3
 		reg2 := (opcode & 0x07)
-		dbgpr("0x%08x: LD %s, %s", cpu.PC(), reg2str(reg1), reg2str(reg2))
+		dbgpr("0x%04x: LD %s, %s", cpu.PC(), reg2str(reg1), reg2str(reg2))
 		val := cpu.getReg(mmu, reg2)
 		cpu.setReg(mmu, reg1, val)
 		cpu.IncPC(1)
 
+	case opcode == 0x76: // HALT
+		dbgpr("0x%04x: HALT", cpu.PC())
+		return fmt.Errorf("HALT is not supported yet")
+
 	case 0x80 <= opcode && opcode <= 0xbf:
 		reg := (opcode & 0x07)
 		val := cpu.getReg(mmu, reg)
-		var res uint8 = 0
-		n, h, c := false, false, false
 		switch {
 		case 0x80 <= opcode && opcode <= 0x87: // ADD A, reg
-			dbgpr("0x%08x: ADD A, %s", cpu.PC(), reg2str(reg))
-			res, c = add8(cpu.A(), val, false)
-			_, h = add4(cpu.A(), val, false)
+			dbgpr("0x%04x: ADD A, %s", cpu.PC(), reg2str(reg))
+			cpu.addA(val)
 		case 0x88 <= opcode && opcode <= 0x8f: // ADC A, reg
-			dbgpr("0x%08x: ADC A, %s", cpu.PC(), reg2str(reg))
-			res, c = add8(cpu.A(), val, cpu.FlagC())
-			_, h = add4(cpu.A(), val, cpu.FlagC())
+			dbgpr("0x%04x: ADC A, %s", cpu.PC(), reg2str(reg))
+			cpu.adcA(val)
 		case 0x90 <= opcode && opcode <= 0x97: // SUB reg
-			dbgpr("0x%08x: SUB %s", cpu.PC(), reg2str(reg))
-			res, c = sub8(cpu.A(), val, false)
-			_, h = sub4(cpu.A(), val, false)
-			n = true
+			dbgpr("0x%04x: SUB %s", cpu.PC(), reg2str(reg))
+			cpu.subA(val)
 		case 0x98 <= opcode && opcode <= 0x9f: // SBC A, reg
-			dbgpr("0x%08x: SBC A, %s", cpu.PC(), reg2str(reg))
-			res, c = sub8(cpu.A(), val, cpu.FlagC())
-			_, h = sub4(cpu.A(), val, cpu.FlagC())
-			n = true
+			dbgpr("0x%04x: SBC A, %s", cpu.PC(), reg2str(reg))
+			cpu.sbcA(val)
 		case 0xa0 <= opcode && opcode <= 0xa7: // AND reg
-			dbgpr("0x%08x: AND %s", cpu.PC(), reg2str(reg))
-			res = cpu.A() & val
-			h = true
+			dbgpr("0x%04x: AND %s", cpu.PC(), reg2str(reg))
+			cpu.andA(val)
 		case 0xa8 <= opcode && opcode <= 0xaf: // XOR reg
-			dbgpr("0x%08x: XOR %s", cpu.PC(), reg2str(reg))
-			res = cpu.A() ^ val
+			dbgpr("0x%04x: XOR %s", cpu.PC(), reg2str(reg))
+			cpu.xorA(val)
 		case 0xb0 <= opcode && opcode <= 0xb7: // OR reg
-			dbgpr("0x%08x: OR %s", cpu.PC(), reg2str(reg))
-			res = cpu.A() | val
+			dbgpr("0x%04x: OR %s", cpu.PC(), reg2str(reg))
+			cpu.orA(val)
 		case 0xb8 <= opcode && opcode <= 0xbf: // CP reg
-			dbgpr("0x%08x: CP %s", cpu.PC(), reg2str(reg))
-			res, c = sub8(cpu.A(), val, false)
-			_, h = sub4(cpu.A(), val, false)
-			res = cpu.A() // restore
-			n = true
+			dbgpr("0x%04x: CP %s", cpu.PC(), reg2str(reg))
+			cpu.cpA(val)
 		}
-		cpu.SetA(res)
-		cpu.SetFlagZNHC(res == 0, n, h, c)
 		cpu.IncPC(1)
 
-	case opcode == 0xea:
-		dbgpr("0x%08x: LD (0x%x), A", cpu.PC(), imm16)
-		mmu.Set8(imm16, cpu.A())
-		cpu.IncPC(3)
+	case opcode == 0xc9 || // RET
+		(opLow%8 == 0 && (opHigh == 0xc || opHigh == 0xd)): // RET (NZ|Z|NC|C)
+		var strIdx uint8 = 0
+		if opLow%8 == 0 {
+			strIdx = (opcode - 0xc0) / 8
+		}
+		dbgpr("0x%04x: RET %s", cpu.PC(), cc2str(strIdx, false))
+		if opcode == 0xc9 ||
+			(opcode == 0xc0 && !cpu.FlagZ()) || (opcode == 0xc8 && cpu.FlagZ()) ||
+			(opcode == 0xd0 && !cpu.FlagC()) || (opcode == 0xd8 && cpu.FlagC()) {
+			addr := cpu.pop16(mmu)
+			cpu.SetPC(addr)
+		} else {
+			cpu.IncPC(1)
+		}
 
-	case opcode == 0xfa:
-		dbgpr("0x%08x: LD A, (0x%x)", cpu.PC(), imm16)
-		cpu.SetA(mmu.Get8(imm16))
-		cpu.IncPC(3)
-
-	case opcode == 0xe0:
-		dbgpr("0x%08x: LDH (0x%x), A", cpu.PC(), imm8)
-		addr := 0xff00 + uint16(imm8)
-		mmu.Set8(addr, cpu.A())
-		cpu.IncPC(2)
-
-	case opcode == 0xf0:
-		dbgpr("0x%08x: LDH A, (0x%x)", cpu.PC(), imm8)
-		addr := 0xff00 + uint16(imm8)
-		cpu.SetA(mmu.Get8(addr))
-		cpu.IncPC(2)
-
-	case opcode == 0xc3:
-		dbgpr("0x%08x: JP 0x%x", cpu.PC(), mmu.Get16(cpu.PC()+1))
-		addr := mmu.Get16(cpu.PC() + 1)
-		cpu.SetPC(addr)
-
-	case opcode == 0xc9:
-		dbgpr("0x%08x: RET", cpu.PC())
-		addr := cpu.pop16(mmu)
-		cpu.SetPC(addr)
-
-	case opcode == 0xcd:
-		dbgpr("0x%08x: CALL 0x%x", cpu.PC(), imm16)
-		cpu.push16(mmu, cpu.PC()+3)
-		cpu.SetPC(imm16)
-
-	case opcode == 0xf3:
-		dbgpr("0x%08x: DI", cpu.PC())
-		cpu.SetIME(false) // FIXME: Correct? Probably it should be delayed.
-		cpu.IncPC(1)
-
-	case opcode == 0xfb:
-		dbgpr("0x%08x: EI", cpu.PC())
-		cpu.SetIME(true) // FIXME: Correct? Probably it should be delayed.
-		cpu.IncPC(1)
-
-	case opLow == 5 && (0xc <= opHigh && opHigh <= 0xf):
+	case opLow == 1 && (0xc <= opHigh && opHigh <= 0xf): // POP
 		index := opHigh - 0xc
-		dbgpr("0x%08x: PUSH %s", cpu.PC(), regBC_DE_HL_AF_ToStr(index))
-		cpu.push16(mmu, cpu.getReg16(index, false))
-		cpu.IncPC(1)
-
-	case opLow == 1 && (0xc <= opHigh && opHigh <= 0xf):
-		index := opHigh - 0xc
-		dbgpr("0x%08x: POP  %s", cpu.PC(), regBC_DE_HL_AF_ToStr(index))
+		dbgpr("0x%04x: POP %s", cpu.PC(), regBC_DE_HL_AF_ToStr(index))
 		cpu.setReg16(mmu, index, cpu.pop16(mmu), false)
 		cpu.IncPC(1)
 
+	case opcode == 0xc3: // FIXME: JP (NZ|Z|NC|C), a16
+		dbgpr("0x%04x: JP 0x%x", cpu.PC(), mmu.Get16(cpu.PC()+1))
+		addr := mmu.Get16(cpu.PC() + 1)
+		cpu.SetPC(addr)
+
+	case opcode == 0xcd || // CALL a16
+		(opLow%8 == 4 && (opHigh == 0xc || opHigh == 0xd)): // CALL (NZ|Z|NC|C), a16
+		var strIdx uint8 = 0
+		if opLow%8 == 0 {
+			strIdx = (opcode - 0xc4) / 8
+		}
+		dbgpr("0x%04x: CALL %s0x%x", cpu.PC(), cc2str(strIdx, true), imm16)
+		if opcode == 0xcd ||
+			(opcode == 0xc4 && !cpu.FlagZ()) || (opcode == 0xcc && cpu.FlagZ()) ||
+			(opcode == 0xd4 && !cpu.FlagC()) || (opcode == 0xdc && cpu.FlagC()) {
+			cpu.push16(mmu, cpu.PC()+3)
+			cpu.SetPC(imm16)
+		} else {
+			cpu.IncPC(3)
+		}
+
+	case opLow == 5 && (0xc <= opHigh && opHigh <= 0xf):
+		index := opHigh - 0xc
+		dbgpr("0x%04x: PUSH %s", cpu.PC(), regBC_DE_HL_AF_ToStr(index))
+		cpu.push16(mmu, cpu.getReg16(index, false))
+		cpu.IncPC(1)
+
+	case opLow%8 == 6 && (0xc <= opHigh && opHigh <= 0xf):
+		switch opcode {
+		case 0xc6: // ADD A, d8
+			dbgpr("0x%04x: ADD A, 0x%x", cpu.PC(), imm8)
+			cpu.addA(imm8)
+		case 0xce: // ADC A, d8
+			dbgpr("0x%04x: ADC A, 0x%x", cpu.PC(), imm8)
+			cpu.adcA(imm8)
+		case 0xd6: // SUB d8
+			dbgpr("0x%04x: SUB 0x%x", cpu.PC(), imm8)
+			cpu.subA(imm8)
+		case 0xde: // SBC d8
+			dbgpr("0x%04x: SBC 0x%x", cpu.PC(), imm8)
+			cpu.sbcA(imm8)
+		case 0xe6: // AND d8
+			dbgpr("0x%04x: AND 0x%x", cpu.PC(), imm8)
+			cpu.andA(imm8)
+		case 0xee: // XOR d8
+			dbgpr("0x%04x: XOR 0x%x", cpu.PC(), imm8)
+			cpu.xorA(imm8)
+		case 0xf6: // OR d8
+			dbgpr("0x%04x: OR 0x%x", cpu.PC(), imm8)
+			cpu.orA(imm8)
+		case 0xfe: // CP d8
+			dbgpr("0x%04x: CP 0x%x", cpu.PC(), imm8)
+			cpu.cpA(imm8)
+		}
+		cpu.IncPC(2)
+
+	case opcode == 0xcb: // PREFIX CB
+		dbgpr("0x%04x: PREFIX CB", cpu.PC())
+		cpu.IncPC(1)
+		cpu.stepCB(mmu)
+
+	case opcode == 0xe0 || opcode == 0xf0:
+		if opcode == 0xe0 {
+			dbgpr("0x%04x: LDH (0x%x), A", cpu.PC(), imm8)
+			addr := 0xff00 + uint16(imm8)
+			mmu.Set8(addr, cpu.A())
+		} else {
+			dbgpr("0x%04x: LDH A, (0x%x)", cpu.PC(), imm8)
+			addr := 0xff00 + uint16(imm8)
+			cpu.SetA(mmu.Get8(addr))
+		}
+		cpu.IncPC(2)
+
+	case opcode == 0xe8: // ADD SP, r8
+		dbgpr("0x%04x: ADD SP, 0x%x", cpu.PC(), imm8)
+		sp := cpu.SP()
+		_, carry := add8(uint8(sp), imm8, false)
+		_, halfCarry := add4(uint8(sp), imm8, false)
+		cpu.SetSP(sp + uint16(imm8))
+		cpu.SetFlagZNHC(false, false, halfCarry, carry)
+		cpu.IncPC(2)
+
+	case opcode == 0xe9: // JP (HL)
+		dbgpr("0x%04x: JP (HL)", cpu.PC())
+		addr := cpu.HL()
+		cpu.SetPC(addr)
+
+	case opcode == 0xea || opcode == 0xfa:
+		if opcode == 0xea {
+			dbgpr("0x%04x: LD (0x%x), A", cpu.PC(), imm16)
+			mmu.Set8(imm16, cpu.A())
+		} else {
+			dbgpr("0x%04x: LD A, (0x%x)", cpu.PC(), imm16)
+			cpu.SetA(mmu.Get8(imm16))
+		}
+		cpu.IncPC(3)
+
+	case opcode == 0xf3 || opcode == 0xfb:
+		if opcode == 0xf3 {
+			dbgpr("0x%04x: DI", cpu.PC())
+			cpu.SetIME(false) // FIXME: Correct? Probably it should be delayed.
+		} else {
+			dbgpr("0x%04x: EI", cpu.PC())
+			cpu.SetIME(true) // FIXME: Correct? Probably it should be delayed.
+		}
+		cpu.IncPC(1)
+
+	case opcode == 0xf8: // LD HL, SP+r8
+		dbgpr("0x%04x: LD HL, SP+0x%x", cpu.PC(), imm8)
+		sp := cpu.SP()
+		_, carry := add8(uint8(sp), imm8, false)
+		_, halfCarry := add4(uint8(sp), imm8, false)
+		cpu.SetHL(sp + uint16(imm8))
+		cpu.SetFlagZNHC(false, false, halfCarry, carry)
+		cpu.IncPC(2)
+
+	case opcode == 0xf9: // LD SP, HL
+		dbgpr("0x%04x: LD SP, HL", cpu.PC())
+		cpu.SetSP(cpu.HL())
+		cpu.IncPC(1)
+
 	default:
-		return fmt.Errorf("Illegal instr: 0x%02x at 0x%08x\n", mmu.Get8(cpu.PC()), cpu.PC())
+		return fmt.Errorf("Illegal instr: 0x%02x at 0x%04x\n", mmu.Get8(cpu.PC()), cpu.PC())
 	}
 
 	dbgpr("                af=%04x    bc=%04x    de=%04x    hl=%04x", cpu.AF(), cpu.BC(), cpu.DE(), cpu.HL())

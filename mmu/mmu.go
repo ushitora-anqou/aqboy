@@ -2,6 +2,10 @@ package mmu
 
 import "log"
 
+func dbgpr(format string, v ...interface{}) {
+	log.Printf(format, v...)
+}
+
 type MMU struct {
 	/*
 		GENERAL MEMORY MAP
@@ -42,42 +46,71 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 	switch {
 	case 0x8000 <= addr && addr <= 0x9FFF:
 		mmu.vram[addr-0x8000] = val
+		return
 	case 0xc000 <= addr && addr <= 0xdfff:
 		mmu.wram[addr-0xc000] = val
+		return
 	case 0xe000 <= addr && addr <= 0xfdff:
 		mmu.wram[addr-0xe000] = val
+		return
 	case 0xff80 <= addr && addr <= 0xfffe:
 		mmu.hram[addr-0xff80] = val
-	case addr == 0xff07:
+		return
+	}
+
+	switch addr {
+	case 0xff00:
+		dbgpr("\t<<<WRITE: P1/JOYP Joypad: %08b>>>", val)
+	case 0xff01:
+		dbgpr("\t<<<WRITE: SB Serial transfer data>>>")
+	case 0xff02:
+		dbgpr("\t<<<WRITE: SC Serial Transfer Control>>>")
+	case 0xff07:
 		timerEnable := (val >> 2) & 1
 		inputClockSelect := val & 3
-		log.Printf("\t<<<WRITE: TAC Timer Control: %v %v>>>", timerEnable, inputClockSelect)
-	case addr == 0xff26:
-		allSoundOnOff := (val >> 7) & 1
-		soundOnFlag := val & 15
-		log.Printf("\t<<<WRITE: NR52 Sound on/off: %v %b>>>", allSoundOnOff, soundOnFlag)
-	case addr == 0xff0f:
+		dbgpr("\t<<<WRITE: TAC Timer Control: %v %v>>>", timerEnable, inputClockSelect)
+	case 0xff0f:
 		vBlank := val & 1
 		lcdStat := (val >> 1) & 1
 		timer := (val >> 2) & 1
 		serial := (val >> 3) & 1
 		joypad := (val >> 4) & 1
-		log.Printf("\t<<<WRITE: IF Interrupt Flag: %v %v %v %v %v>>>", vBlank, lcdStat, timer, serial, joypad)
-	case addr == 0xff24:
+		dbgpr("\t<<<WRITE: IF Interrupt Flag: %v %v %v %v %v>>>", vBlank, lcdStat, timer, serial, joypad)
+	case 0xff24:
 		outputVinToSO2 := (val >> 7) & 1
 		so2OutputLevel := (val >> 4) & 7
 		outputVinToSO1 := (val >> 3) & 1
 		so1OutputLevel := (val >> 0) & 7
-		log.Printf("\t<<<WRITE: NR50 Channel control / On-OFF / Volume: %v %v %v %v>>>", outputVinToSO2, so2OutputLevel, outputVinToSO1, so1OutputLevel)
-	case addr == 0xff25:
-		log.Printf("\t<<<WRITE: NR51 Selection of Sound output terminal: %b>>>", val)
-	case addr == 0xffff:
+		dbgpr("\t<<<WRITE: NR50 Channel control / On-OFF / Volume: %v %v %v %v>>>", outputVinToSO2, so2OutputLevel, outputVinToSO1, so1OutputLevel)
+	case 0xff25:
+		dbgpr("\t<<<WRITE: NR51 Selection of Sound output terminal: %08b>>>", val)
+	case 0xff26:
+		allSoundOnOff := (val >> 7) & 1
+		soundOnFlag := val & 15
+		dbgpr("\t<<<WRITE: NR52 Sound on/off: %v %08b>>>", allSoundOnOff, soundOnFlag)
+	case 0xff40:
+		dbgpr("\t<<<WRITE: LCDC - LCD Control: %08b>>>", val)
+	case 0xff42:
+		dbgpr("\t<<<WRITE: SCY Scroll Y: %03x>>>", val)
+	case 0xff43:
+		dbgpr("\t<<<WRITE: SCX Scroll X: %03x>>>", val)
+	case 0xff47:
+		dbgpr("\t<<<WRITE: BGP BG Palette Data Non CGB Mode Only: %08b>>>", val)
+	case 0xff4d:
+		dbgpr("\t<<<WRITE: KEY1 CGB Mode Only Prepare Speed Switch>>>")
+	case 0xff4f:
+		dbgpr("\t<<<WRITE: VBK CGB Mode Only VRAM Bank>>>")
+	case 0xff68:
+		dbgpr("\t<<<WRITE: BCPS/BGPI CGB Mode Only Background Palette Index>>>")
+	case 0xff69:
+		dbgpr("\t<<<WRITE: BCPD/BGPD CGB Mode Only Background Palette Data>>>")
+	case 0xffff:
 		vBlank := val & 1
 		lcdStat := (val >> 1) & 1
 		timer := (val >> 2) & 1
 		serial := (val >> 3) & 1
 		joypad := (val >> 4) & 1
-		log.Printf("\t<<<WRITE: IE Interrupt Enable: %v %v %v %v %v>>>", vBlank, lcdStat, timer, serial, joypad)
+		dbgpr("\t<<<WRITE: IE Interrupt Enable: %v %v %v %v %v>>>", vBlank, lcdStat, timer, serial, joypad)
 	default:
 		log.Fatalf("Invalid memory access of Set8: 0x%02x at 0x%08x", val, addr)
 	}
@@ -97,20 +130,33 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 		return mmu.wram[addr-0xe000]
 	case 0xff80 <= addr && addr <= 0xfffe:
 		return mmu.hram[addr-0xff80]
-	case addr == 0xff07:
-		log.Printf("\t<<<READ: TAC Timer Control>>>")
-	case addr == 0xff0f:
-		log.Printf("\t<<<READ: IF Interrupt Flag>>>")
-	case addr == 0xffff:
-		log.Printf("\t<<<READ: IF Interrupt Enable>>>")
-	case addr == 0xff24:
-		log.Printf("\t<<<READ: NR50 Channel control / On-OFF / Volume>>>")
-	case addr == 0xff25:
-		log.Printf("\t<<<READ: NR51 Selection of Sound output terminal>>>")
-	case addr == 0xff26:
-		log.Printf("\t<<<READ: NR52 Sound on/off>>>")
 	}
-	log.Fatalf("Invalid memory access of Get8: at 0x%08x", addr)
+
+	switch addr {
+	case 0xff07:
+		dbgpr("\t<<<READ: TAC Timer Control>>>")
+	case 0xff0f:
+		dbgpr("\t<<<READ: IF Interrupt Flag>>>")
+	case 0xffff:
+		dbgpr("\t<<<READ: IF Interrupt Enable>>>")
+	case 0xff24:
+		dbgpr("\t<<<READ: NR50 Channel control / On-OFF / Volume>>>")
+	case 0xff25:
+		dbgpr("\t<<<READ: NR51 Selection of Sound output terminal>>>")
+	case 0xff26:
+		dbgpr("\t<<<READ: NR52 Sound on/off>>>")
+	case 0xff40:
+		dbgpr("\t<<<READ: LCDC LCD Control>>>")
+	case 0xff44:
+		dbgpr("\t<<<READ: LY - LCDC Y-Coordinate>>>")
+	case 0xff4d:
+		dbgpr("\t<<<READ: KEY1 CGB Mode Only Prepare Speed Switch>>>")
+	case 0xff68:
+		dbgpr("\t<<<READ: BCPS/BGPI CGB Mode Only Background Palette Index>>>")
+	default:
+		log.Fatalf("Invalid memory access of Get8: at 0x%08x", addr)
+	}
+
 	return 0
 }
 

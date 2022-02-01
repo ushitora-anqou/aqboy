@@ -11,7 +11,8 @@ import (
 
 func run() error {
 	cpu := cpu.NewCPU()
-	mmu, err := mmu.NewMMU("misc/cpu_instrs/individual/01-special.gb")
+	//mmu, err := mmu.NewMMU("misc/cpu_instrs/individual/01-special.gb")
+	mmu, err := mmu.NewMMU("misc/cpu_instrs/individual/03-op sp,hl.gb")
 	if err != nil {
 		return err
 	}

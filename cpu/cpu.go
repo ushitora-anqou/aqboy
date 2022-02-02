@@ -689,6 +689,27 @@ func (cpu *CPU) Step(mmu *mmu.MMU) error {
 		}
 		cpu.IncPC(2)
 
+	case opcode == 0x27: // DAA
+		dbgpr("0x%04x: DAA", cpu.PC())
+		//cpu.IncPC(1)
+		return fmt.Errorf("DAA is not supported yet")
+
+	case opcode == 0x2f: // CPL
+		dbgpr("0x%04x: CPL", cpu.PC())
+		cpu.SetA(^cpu.A())
+		cpu.SetFlagZNHC(cpu.FlagZ(), true, true, cpu.FlagC())
+		cpu.IncPC(1)
+
+	case opcode == 0x37: // SCF
+		dbgpr("0x%04x: SCF", cpu.PC())
+		cpu.SetFlagZNHC(cpu.FlagZ(), false, false, true)
+		cpu.IncPC(1)
+
+	case opcode == 0x3f: // CCF
+		dbgpr("0x%04x: CCF", cpu.PC())
+		cpu.SetFlagZNHC(cpu.FlagZ(), false, false, !cpu.FlagC())
+		cpu.IncPC(1)
+
 	case 0x40 <= opcode && opcode <= 0x7f && opcode != 0x76 /* not HALT */ : // LD reg1,reg2
 		reg1 := (opcode & 0x3f) >> 3
 		reg2 := (opcode & 0x07)

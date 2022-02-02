@@ -1,6 +1,8 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -9,24 +11,38 @@ import (
 	"github.com/ushitora-anqou/aqboy/mmu"
 )
 
+func buildUsageError() error {
+	return fmt.Errorf("Usage: %s PATH [BREAKPOINT-ADDR]", os.Args[0])
+}
+
 func run() error {
+	// Parse options and arguments
+	flag.Parse()
+	if flag.NArg() < 1 {
+		return buildUsageError()
+	}
+	romPath := flag.Arg(0)
+	var breakpointAddr *uint16 = nil
+	if flag.NArg() >= 2 {
+		addr, err := strconv.ParseUint(flag.Arg(1), 0, 16)
+		if err != nil {
+			return err
+		}
+		addru16 := uint16(addr)
+		breakpointAddr = &addru16
+	}
+
+	// Build a new CPU
 	cpu := cpu.NewCPU()
-	//mmu, err := mmu.NewMMU("misc/cpu_instrs/individual/01-special.gb")
-	mmu, err := mmu.NewMMU("misc/cpu_instrs/individual/03-op sp,hl.gb")
+	// Load ROM
+	mmu, err := mmu.NewMMU(romPath)
 	if err != nil {
 		return err
 	}
 
-	var breakpointAddr uint16 = 0
-	if len(os.Args) >= 2 {
-		addr, err := strconv.ParseUint(os.Args[1], 0, 16)
-		if err != nil {
-			return err
-		}
-		breakpointAddr = uint16(addr)
-	}
+	// Go compute
 	for {
-		if breakpointAddr == cpu.PC() {
+		if breakpointAddr != nil && *breakpointAddr == cpu.PC() {
 			break
 		}
 		err := cpu.Step(mmu)

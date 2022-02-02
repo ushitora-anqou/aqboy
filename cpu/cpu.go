@@ -478,6 +478,16 @@ func (cpu *CPU) pop16(mmu *mmu.MMU) uint16 {
 	return val
 }
 
+func (cpu *CPU) call(mmu *mmu.MMU, addr uint16) {
+	cpu.push16(mmu, cpu.PC())
+	cpu.SetPC(addr)
+}
+
+func (cpu *CPU) ret(mmu *mmu.MMU) {
+	addr := cpu.pop16(mmu)
+	cpu.SetPC(addr)
+}
+
 func (cpu *CPU) stepCB(mmu *mmu.MMU) {
 	opcode := mmu.Get8(cpu.PC())
 	reg := opcode % 8
@@ -732,8 +742,7 @@ func (cpu *CPU) Step(mmu *mmu.MMU) error {
 		if opcode == 0xc9 ||
 			(opcode == 0xc0 && !cpu.FlagZ()) || (opcode == 0xc8 && cpu.FlagZ()) ||
 			(opcode == 0xd0 && !cpu.FlagC()) || (opcode == 0xd8 && cpu.FlagC()) {
-			addr := cpu.pop16(mmu)
-			cpu.SetPC(addr)
+			cpu.ret(mmu)
 		} else {
 			cpu.IncPC(1)
 		}
@@ -744,10 +753,20 @@ func (cpu *CPU) Step(mmu *mmu.MMU) error {
 		cpu.setReg16(mmu, index, cpu.pop16(mmu), false)
 		cpu.IncPC(1)
 
-	case opcode == 0xc3: // FIXME: JP (NZ|Z|NC|C), a16
-		dbgpr("0x%04x: JP 0x%x", cpu.PC(), mmu.Get16(cpu.PC()+1))
-		addr := mmu.Get16(cpu.PC() + 1)
-		cpu.SetPC(addr)
+	case opcode == 0xc3 || // JP a16
+		(opLow%8 == 2 && (opHigh == 0xc || opHigh == 0xd)): // JP (NZ|Z|NC|C), a16
+		var strIdx uint8 = 0
+		if opLow%8 == 2 {
+			strIdx = (opcode - 0xc2) / 8
+		}
+		dbgpr("0x%04x: JP %s0x%x", cpu.PC(), cc2str(strIdx, true), imm16)
+		if opcode == 0xc3 ||
+			(opcode == 0xc2 && !cpu.FlagZ()) || (opcode == 0xca && cpu.FlagZ()) ||
+			(opcode == 0xd2 && !cpu.FlagC()) || (opcode == 0xda && cpu.FlagC()) {
+			cpu.SetPC(imm16)
+		} else {
+			cpu.IncPC(3)
+		}
 
 	case opcode == 0xcd || // CALL a16
 		(opLow%8 == 4 && (opHigh == 0xc || opHigh == 0xd)): // CALL (NZ|Z|NC|C), a16
@@ -756,13 +775,11 @@ func (cpu *CPU) Step(mmu *mmu.MMU) error {
 			strIdx = (opcode - 0xc4) / 8
 		}
 		dbgpr("0x%04x: CALL %s0x%x", cpu.PC(), cc2str(strIdx, true), imm16)
+		cpu.IncPC(3)
 		if opcode == 0xcd ||
 			(opcode == 0xc4 && !cpu.FlagZ()) || (opcode == 0xcc && cpu.FlagZ()) ||
 			(opcode == 0xd4 && !cpu.FlagC()) || (opcode == 0xdc && cpu.FlagC()) {
-			cpu.push16(mmu, cpu.PC()+3)
-			cpu.SetPC(imm16)
-		} else {
-			cpu.IncPC(3)
+			cpu.call(mmu, imm16)
 		}
 
 	case opLow == 5 && (0xc <= opHigh && opHigh <= 0xf):
@@ -800,10 +817,21 @@ func (cpu *CPU) Step(mmu *mmu.MMU) error {
 		}
 		cpu.IncPC(2)
 
+	case opLow%8 == 7 && (0xc <= opHigh && opHigh <= 0xf):
+		index := opcode - 0xc7
+		dbgpr("0x%04x: RST %02xH", cpu.PC(), index)
+		cpu.IncPC(1)
+		cpu.call(mmu, uint16(index))
+
 	case opcode == 0xcb: // PREFIX CB
 		dbgpr("0x%04x: PREFIX CB", cpu.PC())
 		cpu.IncPC(1)
 		cpu.stepCB(mmu)
+
+	case opcode == 0xd9: // RETI
+		dbgpr("0x%04x: RETI", cpu.PC())
+		cpu.ret(mmu)
+		cpu.SetIME(true)
 
 	case opcode == 0xe0 || opcode == 0xf0:
 		if opcode == 0xe0 {
@@ -813,6 +841,17 @@ func (cpu *CPU) Step(mmu *mmu.MMU) error {
 		} else {
 			dbgpr("0x%04x: LDH A, (0x%x)", cpu.PC(), imm8)
 			addr := 0xff00 + uint16(imm8)
+			cpu.SetA(mmu.Get8(addr))
+		}
+		cpu.IncPC(2)
+
+	case opcode == 0xe2 || opcode == 0xf2:
+		addr := 0xff00 | uint16(cpu.C())
+		if opcode == 0xe2 {
+			dbgpr("0x%04x: LD (C), A", cpu.PC())
+			mmu.Set8(addr, cpu.A())
+		} else {
+			dbgpr("0x%04x: LD A, (C)", cpu.PC())
 			cpu.SetA(mmu.Get8(addr))
 		}
 		cpu.IncPC(2)

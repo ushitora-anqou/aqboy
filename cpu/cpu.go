@@ -4,12 +4,19 @@ import (
 	"fmt"
 	"log"
 	"math/bits"
-
-	"github.com/ushitora-anqou/aqboy/mmu"
 )
 
+type MMU interface {
+	Get8(addr uint16) uint8
+	Get16(addr uint16) uint16
+	Set8(addr uint16, val uint8)
+	Set16(addr uint16, val uint16)
+}
+
 func dbgpr(format string, v ...interface{}) {
-	//log.Printf(format, v...)
+	if true {
+		log.Printf(format, v...)
+	}
 }
 
 func reg2str(index uint8) string {
@@ -34,10 +41,6 @@ func cc2str(index uint8, needTailComma bool) string {
 	} else {
 		return []string{"", "NZ", "Z", "NC", "C"}[index]
 	}
-}
-
-func compl(v uint8) uint8 {
-	return 0xff ^ v
 }
 
 func b2u8(b bool) uint8 {
@@ -101,10 +104,66 @@ func sub4(xu8, yu8 uint8, borrow bool) (uint8, bool) {
 	return diff, borrowOut
 }
 
+type InterruptBits struct {
+	vblank, lcd, timer, serial, joypad bool
+}
+
+func (ib *InterruptBits) getN(i int) bool {
+	switch i {
+	case 0:
+		return ib.vblank
+	case 1:
+		return ib.lcd
+	case 2:
+		return ib.timer
+	case 3:
+		return ib.serial
+	case 4:
+		return ib.joypad
+	default:
+		log.Fatalf("Invalid interrupt bit: %d", i)
+	}
+	return false
+}
+
+func (ib *InterruptBits) setN(i int, val bool) {
+	switch i {
+	case 0:
+		ib.vblank = val
+	case 1:
+		ib.lcd = val
+	case 2:
+		ib.timer = val
+	case 3:
+		ib.serial = val
+	case 4:
+		ib.joypad = val
+	default:
+		log.Fatalf("Invalid interrupt bit: %d", i)
+	}
+}
+
+func (ib *InterruptBits) get() uint8 {
+	var ret uint8 = 0
+	for i := 0; i < 5; i++ {
+		if ib.getN(i) {
+			ret |= 1 << i
+		}
+	}
+	return ret
+}
+
+func (ib *InterruptBits) set(val uint8) {
+	for i := 0; i < 5; i++ {
+		ib.setN(i, ((val>>i)&1) != 0)
+	}
+}
+
 type CPU struct {
 	pc, sp                 uint16
 	a, f, b, c, d, e, h, l uint8
 	ime                    bool // Interrupt Master Enable flag (IME)
+	intEnable, intFlag     InterruptBits
 }
 
 func NewCPU() *CPU {
@@ -258,8 +317,20 @@ func (cpu *CPU) SetFlagZNHC(z, n, h, c bool) {
 func (cpu *CPU) SetIME(flag bool) {
 	cpu.ime = flag
 }
+func (cpu *CPU) SetIE(val uint8) {
+	cpu.intEnable.set(val)
+}
+func (cpu *CPU) SetIF(val uint8) {
+	cpu.intFlag.set(val)
+}
+func (cpu *CPU) IE() uint8 {
+	return cpu.intEnable.get()
+}
+func (cpu *CPU) IF() uint8 {
+	return cpu.intFlag.get()
+}
 
-func (cpu *CPU) getReg(mmu *mmu.MMU, num uint8) uint8 {
+func (cpu *CPU) getReg(mmu MMU, num uint8) uint8 {
 	switch num {
 	case 0:
 		return cpu.B()
@@ -302,7 +373,7 @@ func (cpu *CPU) getReg16(dst uint8, is3rdSP bool) uint16 {
 	return 0
 }
 
-func (cpu *CPU) setReg16(mmu *mmu.MMU, dst uint8, val uint16, is3rdSP bool) {
+func (cpu *CPU) setReg16(mmu MMU, dst uint8, val uint16, is3rdSP bool) {
 	switch dst {
 	case 0:
 		cpu.SetBC(val)
@@ -321,7 +392,7 @@ func (cpu *CPU) setReg16(mmu *mmu.MMU, dst uint8, val uint16, is3rdSP bool) {
 	}
 }
 
-func (cpu *CPU) setReg(mmu *mmu.MMU, dst, val uint8) {
+func (cpu *CPU) setReg(mmu MMU, dst, val uint8) {
 	switch dst {
 	case 0:
 		cpu.SetB(val)
@@ -345,7 +416,7 @@ func (cpu *CPU) setReg(mmu *mmu.MMU, dst, val uint8) {
 	return
 }
 
-func (cpu *CPU) incReg(mmu *mmu.MMU, reg uint8) (uint8, bool) {
+func (cpu *CPU) incReg(mmu MMU, reg uint8) (uint8, bool) {
 	src := cpu.getReg(mmu, reg)
 	res := src + 1
 	cpu.setReg(mmu, reg, res)
@@ -353,7 +424,7 @@ func (cpu *CPU) incReg(mmu *mmu.MMU, reg uint8) (uint8, bool) {
 	return res, halfCarry
 }
 
-func (cpu *CPU) decReg(mmu *mmu.MMU, reg uint8) (uint8, bool) {
+func (cpu *CPU) decReg(mmu MMU, reg uint8) (uint8, bool) {
 	src := cpu.getReg(mmu, reg)
 	res := src - 1
 	cpu.setReg(mmu, reg, res)
@@ -455,14 +526,14 @@ func (cpu *CPU) srl(val uint8) (res uint8, carry bool) {
 	return
 }
 
-func (cpu *CPU) push16(mmu *mmu.MMU, val uint16) {
+func (cpu *CPU) push16(mmu MMU, val uint16) {
 	sp := cpu.SP()
 	sp -= 2
 	mmu.Set16(sp, val)
 	cpu.SetSP(sp)
 }
 
-func (cpu *CPU) pop16(mmu *mmu.MMU) uint16 {
+func (cpu *CPU) pop16(mmu MMU) uint16 {
 	sp := cpu.SP()
 	val := mmu.Get16(sp)
 	sp += 2
@@ -470,12 +541,12 @@ func (cpu *CPU) pop16(mmu *mmu.MMU) uint16 {
 	return val
 }
 
-func (cpu *CPU) call(mmu *mmu.MMU, addr uint16) {
+func (cpu *CPU) call(mmu MMU, addr uint16) {
 	cpu.push16(mmu, cpu.PC())
 	cpu.SetPC(addr)
 }
 
-func (cpu *CPU) ret(mmu *mmu.MMU) {
+func (cpu *CPU) ret(mmu MMU) {
 	addr := cpu.pop16(mmu)
 	cpu.SetPC(addr)
 }
@@ -488,7 +559,23 @@ func (cpu *CPU) addSP8(val uint8) uint16 {
 	return sp + uint16(int8(val)) // NOTE: sign extension
 }
 
-func (cpu *CPU) stepCB(mmu *mmu.MMU) {
+func (cpu *CPU) handleInterrupt(mmu MMU) {
+	if !cpu.ime {
+		return
+	}
+
+	for i := 0; i < 5; i++ {
+		if !cpu.intEnable.getN(i) || !cpu.intFlag.getN(i) {
+			continue
+		}
+		cpu.push16(mmu, cpu.PC())
+		cpu.SetPC(uint16(0x40 + 0x08*i))
+		cpu.intFlag.setN(i, false)
+		cpu.SetIME(false)
+	}
+}
+
+func (cpu *CPU) stepCB(mmu MMU) {
 	opcode := mmu.Get8(cpu.PC())
 	reg := opcode % 8
 	regVal := cpu.getReg(mmu, reg)
@@ -556,7 +643,9 @@ func (cpu *CPU) stepCB(mmu *mmu.MMU) {
 	cpu.IncPC(1)
 }
 
-func (cpu *CPU) Step(mmu *mmu.MMU) error {
+func (cpu *CPU) Step(mmu MMU) error {
+	cpu.handleInterrupt(mmu)
+
 	opcode := mmu.Get8(cpu.PC())
 	opLow := opcode & 0x0f
 	opHigh := opcode >> 4

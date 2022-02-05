@@ -3,6 +3,7 @@ package mmu
 import (
 	"log"
 
+	"github.com/ushitora-anqou/aqboy/cpu"
 	"github.com/ushitora-anqou/aqboy/ppu"
 )
 
@@ -28,19 +29,21 @@ type MMU struct {
 		FF80-FFFE  High RAM (HRAM)
 		FFFF-FFFF  Interrupts Enable Register (IE)
 	*/
-	cat        *Catridge
+	cpu        *cpu.CPU
 	ppu        *ppu.PPU
+	cat        *Catridge
 	wram, hram []uint8
 }
 
-func NewMMU(ppu *ppu.PPU, catridgeFilePath string) (*MMU, error) {
+func NewMMU(cpu *cpu.CPU, ppu *ppu.PPU, catridgeFilePath string) (*MMU, error) {
 	cat, err := NewCatridge(catridgeFilePath)
 	if err != nil {
 		return nil, err
 	}
 	mmu := &MMU{
-		cat:  cat,
+		cpu:  cpu,
 		ppu:  ppu,
+		cat:  cat,
 		wram: make([]uint8, 0x2000),
 		hram: make([]uint8, 0x007f),
 	}
@@ -70,17 +73,15 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 		dbgpr("\t<<<WRITE: SB Serial transfer data>>>")
 	case 0xff02:
 		dbgpr("\t<<<WRITE: SC Serial Transfer Control>>>")
+	case 0xff05:
+		dbgpr("\t<<<WRITE: TIMA Timer counter>>>")
 	case 0xff07:
 		timerEnable := (val >> 2) & 1
 		inputClockSelect := val & 3
 		dbgpr("\t<<<WRITE: TAC Timer Control: %v %v>>>", timerEnable, inputClockSelect)
 	case 0xff0f:
-		vBlank := val & 1
-		lcdStat := (val >> 1) & 1
-		timer := (val >> 2) & 1
-		serial := (val >> 3) & 1
-		joypad := (val >> 4) & 1
-		dbgpr("\t<<<WRITE: IF Interrupt Flag: %v %v %v %v %v>>>", vBlank, lcdStat, timer, serial, joypad)
+		dbgpr("\t<<<WRITE: IF Interrupt Flag: %b>>>", val)
+		mmu.cpu.SetIF(val)
 	case 0xff24:
 		outputVinToSO2 := (val >> 7) & 1
 		so2OutputLevel := (val >> 4) & 7
@@ -114,12 +115,8 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 	case 0xff69:
 		dbgpr("\t<<<WRITE: BCPD/BGPD CGB Mode Only Background Palette Data>>>")
 	case 0xffff:
-		vBlank := val & 1
-		lcdStat := (val >> 1) & 1
-		timer := (val >> 2) & 1
-		serial := (val >> 3) & 1
-		joypad := (val >> 4) & 1
-		dbgpr("\t<<<WRITE: IE Interrupt Enable: %v %v %v %v %v>>>", vBlank, lcdStat, timer, serial, joypad)
+		dbgpr("\t<<<WRITE: IE Interrupt Enable: %b>>>", val)
+		mmu.cpu.SetIE(val)
 	default:
 		log.Fatalf("Invalid memory access of Set8: 0x%02x at 0x%08x", val, addr)
 	}
@@ -142,12 +139,16 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 	}
 
 	switch addr {
+	case 0xff05:
+		dbgpr("\t<<<READ: TIMA Timer counter>>>")
 	case 0xff07:
 		dbgpr("\t<<<READ: TAC Timer Control>>>")
 	case 0xff0f:
 		dbgpr("\t<<<READ: IF Interrupt Flag>>>")
+		return mmu.cpu.IF()
 	case 0xffff:
-		dbgpr("\t<<<READ: IF Interrupt Enable>>>")
+		dbgpr("\t<<<READ: IE Interrupt Enable>>>")
+		return mmu.cpu.IE()
 	case 0xff24:
 		dbgpr("\t<<<READ: NR50 Channel control / On-OFF / Volume>>>")
 	case 0xff25:

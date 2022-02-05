@@ -176,7 +176,7 @@ func run() error {
 	// Build a new CPU, MMU, and PPU
 	cpu := cpu.NewCPU()
 	ppu := ppu.NewPPU()
-	mmu, err := mmu.NewMMU(ppu, romPath)
+	mmu, err := mmu.NewMMU(cpu, ppu, romPath)
 	if err != nil {
 		return err
 	}

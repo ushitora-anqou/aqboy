@@ -9,7 +9,7 @@ import (
 )
 
 func dbgpr(format string, v ...interface{}) {
-	if false {
+	if true {
 		log.Printf(format, v...)
 	}
 }
@@ -569,6 +569,9 @@ func (cpu *CPU) handleInterrupt() {
 		cpu.SetPC(uint16(0x40 + 0x08*i))
 		cpu.intFlag.setN(i, false)
 		cpu.SetIME(false)
+		dbgpr("\t<<<INTERRUPT: %d>>>", i)
+
+		break
 	}
 
 	// FIXME: Consider elapsed machine cycles?
@@ -1098,6 +1101,7 @@ func (cpu *CPU) Step() (uint, error) {
 
 	dbgpr("                af=%04x    bc=%04x    de=%04x    hl=%04x", cpu.AF(), cpu.BC(), cpu.DE(), cpu.HL())
 	dbgpr("                sp=%04x    pc=%04x    Z=%d  N=%d  H=%d  C=%d", cpu.SP(), cpu.PC(), b2u8(cpu.FlagZ()), b2u8(cpu.FlagN()), b2u8(cpu.FlagH()), b2u8(cpu.FlagC()))
+	dbgpr("                ime=%d", b2u8(cpu.ime))
 
 	tick := getOpTick(opcode, imm8, taken)
 

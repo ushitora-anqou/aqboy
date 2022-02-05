@@ -50,6 +50,8 @@ func NewMMU(bus *bus.Bus, catridgeFilePath string) (*MMU, error) {
 func (mmu *MMU) Set8(addr uint16, val uint8) {
 	cpu := mmu.bus.CPU
 	ppu := mmu.bus.PPU
+	timer := mmu.bus.Timer
+
 	switch {
 	case 0x8000 <= addr && addr <= 0x9FFF:
 		ppu.Set8(addr, val)
@@ -74,10 +76,10 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 		dbgpr("\t<<<WRITE: SC Serial Transfer Control>>>")
 	case 0xff05:
 		dbgpr("\t<<<WRITE: TIMA Timer counter>>>")
+		timer.SetTIMA(val)
 	case 0xff07:
-		timerEnable := (val >> 2) & 1
-		inputClockSelect := val & 3
-		dbgpr("\t<<<WRITE: TAC Timer Control: %v %v>>>", timerEnable, inputClockSelect)
+		dbgpr("\t<<<WRITE: TAC Timer Control: %b>>>", val)
+		timer.SetTAC(val)
 	case 0xff0f:
 		dbgpr("\t<<<WRITE: IF Interrupt Flag: %b>>>", val)
 		cpu.SetIF(val)
@@ -124,6 +126,7 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 func (mmu *MMU) Get8(addr uint16) uint8 {
 	ppu := mmu.bus.PPU
 	cpu := mmu.bus.CPU
+	timer := mmu.bus.Timer
 
 	switch {
 	case 0x0000 <= addr && addr <= 0x3FFF:
@@ -143,8 +146,10 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 	switch addr {
 	case 0xff05:
 		dbgpr("\t<<<READ: TIMA Timer counter>>>")
+		return timer.TIMA()
 	case 0xff07:
 		dbgpr("\t<<<READ: TAC Timer Control>>>")
+		return timer.TAC()
 	case 0xff0f:
 		dbgpr("\t<<<READ: IF Interrupt Flag>>>")
 		return cpu.IF()

@@ -16,6 +16,7 @@ import (
 	"github.com/ushitora-anqou/aqboy/cpu"
 	"github.com/ushitora-anqou/aqboy/mmu"
 	"github.com/ushitora-anqou/aqboy/ppu"
+	"github.com/ushitora-anqou/aqboy/timer"
 )
 
 func buildUsageError() error {
@@ -211,6 +212,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	timer := timer.NewTimer(bus)
 
 	// Initialize SDL
 	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
@@ -224,7 +226,7 @@ func run() error {
 	}
 
 	// Build up the bus
-	bus.Register(cpu, mmu, ppu, wind)
+	bus.Register(cpu, mmu, ppu, wind, timer)
 
 	// Prepare shared variables
 	running := NewAtomicBool(true)
@@ -247,6 +249,7 @@ func run() error {
 				break
 			}
 			ppu.Update(tick)
+			timer.Update(tick)
 
 			// Synchronize by sleeping
 			synchronizer.maySleep(tick)

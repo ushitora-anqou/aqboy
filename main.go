@@ -229,7 +229,7 @@ func run() error {
 	var errCPU error = nil
 	wg.Add(1)
 	go func() {
-		sync := NewTimeSynchronizer(16 * 1024 /* interval */)
+		synchronizer := NewTimeSynchronizer(16 * 1024 /* interval */)
 		for running.Get() {
 			if breakpointAddr != nil && *breakpointAddr == cpu.PC() {
 				log.Printf("Break at 0x%04x.", cpu.PC())
@@ -243,8 +243,8 @@ func run() error {
 			}
 			ppu.Update(wind, tick)
 
-			// Synchronize time by sleeping
-			sync.maySleep(tick)
+			// Synchronize by sleeping
+			synchronizer.maySleep(tick)
 		}
 		running.Set(false)
 		wg.Done()

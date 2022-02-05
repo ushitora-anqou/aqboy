@@ -58,40 +58,32 @@ func rotateRight8(x uint8, k int) uint8 {
 	return (x >> s) | (x << (n - s))
 }
 
-func add12(xu16, yu16 uint16, carry bool) (uint16, bool) {
-	// Thanks to: https://cs.opensource.google/go/go/+/refs/tags/go1.17.6:src/math/bits/bits.go;l=354
-	x, y := xu16&0x0fff, yu16&0x0fff
-	sum := x + y
+func addN(x, y uint64, carry bool, max uint64) (uint64, bool) {
+	sum := x&max + y&max
 	if carry {
 		sum += 1
 	}
-	carryOut := (((x & y) | ((x | y) &^ sum)) >> 11) != 0
-	return sum, carryOut
+	return sum & max, sum > max
 }
 
 func add16(x, y uint16, carry bool) (uint16, bool) {
-	// Thanks to: https://cs.opensource.google/go/go/+/refs/tags/go1.17.6:src/math/bits/bits.go;l=354
-	sum := x + y
-	if carry {
-		sum += 1
-	}
-	carryOut := (((x & y) | ((x | y) &^ sum)) >> 15) != 0
-	return sum, carryOut
+	sum, carry := addN(uint64(x), uint64(y), carry, 0xffff)
+	return uint16(sum), carry
+}
+
+func add12(x, y uint16, carry bool) (uint16, bool) {
+	sum, carry := addN(uint64(x), uint64(y), carry, 0x0fff)
+	return uint16(sum), carry
 }
 
 func add8(x, y uint8, carry bool) (uint8, bool) {
-	// Thanks to: https://cs.opensource.google/go/go/+/refs/tags/go1.17.6:src/math/bits/bits.go;l=354
-	sum := x + y + b2u8(carry)
-	carryOut := (((x & y) | ((x | y) &^ sum)) >> 7) != 0
-	return sum, carryOut
+	sum, carry := addN(uint64(x), uint64(y), carry, 0xff)
+	return uint8(sum), carry
 }
 
-func add4(xu8, yu8 uint8, carry bool) (uint8, bool) {
-	// Thanks to: https://cs.opensource.google/go/go/+/refs/tags/go1.17.6:src/math/bits/bits.go;l=354
-	x, y := xu8&0x0f, yu8&0x0f
-	sum := (x + y + b2u8(carry)) & 0x0f
-	carryOut := (((x & y) | ((x | y) &^ sum)) >> 3) != 0
-	return sum, carryOut
+func add4(x, y uint8, carry bool) (uint8, bool) {
+	sum, carry := addN(uint64(x), uint64(y), carry, 0x0f)
+	return uint8(sum), carry
 }
 
 func sub8(x, y uint8, borrow bool) (uint8, bool) {

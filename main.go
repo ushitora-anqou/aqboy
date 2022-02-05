@@ -203,6 +203,7 @@ func run() error {
 		addru16 := uint16(addr)
 		breakpointAddr = &addru16
 	}
+	cpu.TRACE_INSTR = os.Getenv("AQBOY_TRACE") == "1"
 
 	// Build a new CPU, MMU, and PPU
 	bus := bus.NewBus()

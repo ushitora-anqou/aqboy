@@ -63,17 +63,16 @@ func (t *Timer) Update(tick uint) {
 		return
 	}
 
-	sel := t.inputClockSelect()
 	t.tick += tick
 	var thr uint
-	switch {
-	case sel == 0: // CPU Clock / 1024
+	switch t.inputClockSelect() {
+	case 0: // CPU Clock / 1024
 		thr = 1024
-	case sel == 1: // CPU Clock / 16
+	case 1: // CPU Clock / 16
 		thr = 16
-	case sel == 2: // CPU Clock / 64
+	case 2: // CPU Clock / 64
 		thr = 64
-	case sel == 3: // CPU Clock / 256
+	case 3: // CPU Clock / 256
 		thr = 256
 	}
 	for t.tick > thr {

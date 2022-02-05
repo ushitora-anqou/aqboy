@@ -8,8 +8,10 @@ import (
 	"github.com/ushitora-anqou/aqboy/bus"
 )
 
+var TRACE_INSTR bool
+
 func dbgpr(format string, v ...interface{}) {
-	if false {
+	if TRACE_INSTR {
 		log.Printf(format, v...)
 	}
 }
@@ -1116,7 +1118,7 @@ func (cpu *CPU) Step() (uint, error) {
 
 	dbgpr("                af=%04x    bc=%04x    de=%04x    hl=%04x", cpu.AF(), cpu.BC(), cpu.DE(), cpu.HL())
 	dbgpr("                sp=%04x    pc=%04x    Z=%d  N=%d  H=%d  C=%d", cpu.SP(), cpu.PC(), b2u8(cpu.FlagZ()), b2u8(cpu.FlagN()), b2u8(cpu.FlagH()), b2u8(cpu.FlagC()))
-	dbgpr("                ime=%d", b2u8(cpu.ime))
+	dbgpr("                ime=%d      tima=%02x", b2u8(cpu.ime), cpu.bus.Timer.TIMA())
 
 	tick := getOpTick(opcode, imm8, taken)
 

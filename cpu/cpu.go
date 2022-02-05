@@ -9,7 +9,7 @@ import (
 )
 
 func dbgpr(format string, v ...interface{}) {
-	if true {
+	if false {
 		log.Printf(format, v...)
 	}
 }
@@ -159,6 +159,7 @@ type CPU struct {
 	pc, sp                 uint16
 	a, f, b, c, d, e, h, l uint8
 	ime                    bool // Interrupt Master Enable flag (IME)
+	halted                 bool
 	intEnable, intFlag     InterruptBits
 }
 
@@ -320,11 +321,20 @@ func (cpu *CPU) SetIE(val uint8) {
 func (cpu *CPU) SetIF(val uint8) {
 	cpu.intFlag.set(val)
 }
+func (cpu *CPU) SetHalted(b bool) {
+	cpu.halted = b
+}
+func (cpu *CPU) IME() bool {
+	return cpu.ime
+}
 func (cpu *CPU) IE() uint8 {
 	return cpu.intEnable.get()
 }
 func (cpu *CPU) IF() uint8 {
 	return cpu.intFlag.get()
+}
+func (cpu *CPU) Halted() bool {
+	return cpu.halted
 }
 
 func (cpu *CPU) getReg(num uint8) uint8 {
@@ -557,24 +567,23 @@ func (cpu *CPU) addSP8(val uint8) uint16 {
 }
 
 func (cpu *CPU) handleInterrupt() {
-	if !cpu.ime {
-		return
-	}
-
 	for i := 0; i < 5; i++ {
-		if !cpu.intEnable.getN(i) || !cpu.intFlag.getN(i) {
+		if !(cpu.intEnable.getN(i) && cpu.intFlag.getN(i)) {
 			continue
 		}
-		cpu.push16(cpu.PC())
-		cpu.SetPC(uint16(0x40 + 0x08*i))
-		cpu.intFlag.setN(i, false)
-		cpu.SetIME(false)
-		dbgpr("\t<<<INTERRUPT: %d>>>", i)
-
+		if !cpu.IME() && cpu.Halted() {
+			cpu.SetHalted(false)
+		}
+		if cpu.IME() {
+			cpu.push16(cpu.PC())
+			cpu.SetPC(uint16(0x40 + 0x08*i))
+			cpu.intFlag.setN(i, false)
+			cpu.SetIME(false)
+			cpu.SetHalted(false)
+			// FIXME: Consider elapsed machine cycles?
+		}
 		break
 	}
-
-	// FIXME: Consider elapsed machine cycles?
 }
 
 func getOpTick(opcode, opcode2 uint8, taken bool) uint {
@@ -706,6 +715,10 @@ func (cpu *CPU) stepCB() {
 func (cpu *CPU) Step() (uint, error) {
 	cpu.handleInterrupt()
 
+	if cpu.Halted() {
+		return 4, nil
+	}
+
 	mmu := cpu.bus.MMU
 	opcode := mmu.Get8(cpu.PC())
 	opLow := opcode & 0x0f
@@ -715,6 +728,7 @@ func (cpu *CPU) Step() (uint, error) {
 	taken := false
 
 	switch {
+
 	case opcode == 0x00: // NOP
 		dbgpr("0x%04x: NOP", cpu.PC())
 		cpu.IncPC(1)
@@ -893,7 +907,8 @@ func (cpu *CPU) Step() (uint, error) {
 
 	case opcode == 0x76: // HALT
 		dbgpr("0x%04x: HALT", cpu.PC())
-		return 0, fmt.Errorf("HALT is not supported yet")
+		cpu.SetHalted(true)
+		cpu.IncPC(1)
 
 	case 0x80 <= opcode && opcode <= 0xbf:
 		reg := (opcode & 0x07)

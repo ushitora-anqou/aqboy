@@ -9,7 +9,7 @@ import (
 )
 
 func dbgpr(format string, v ...interface{}) {
-	if true {
+	if false {
 		log.Printf(format, v...)
 	}
 }

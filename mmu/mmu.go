@@ -75,8 +75,11 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 	case 0xff02:
 		dbgpr("\t<<<WRITE: SC Serial Transfer Control>>>")
 	case 0xff05:
-		dbgpr("\t<<<WRITE: TIMA Timer counter>>>")
+		dbgpr("\t<<<WRITE: TIMA Timer counter: %02x>>>", val)
 		timer.SetTIMA(val)
+	case 0xff06:
+		dbgpr("\t<<<WRITE: TMA Timer Modulo: %02x>>>", val)
+		timer.SetTMA(val)
 	case 0xff07:
 		dbgpr("\t<<<WRITE: TAC Timer Control: %b>>>", val)
 		timer.SetTAC(val)
@@ -147,6 +150,9 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 	case 0xff05:
 		dbgpr("\t<<<READ: TIMA Timer counter>>>")
 		return timer.TIMA()
+	case 0xff06:
+		dbgpr("\t<<<READ: TMA Timer Modulo>>>")
+		return timer.TMA()
 	case 0xff07:
 		dbgpr("\t<<<READ: TAC Timer Control>>>")
 		return timer.TAC()

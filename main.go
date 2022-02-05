@@ -268,6 +268,7 @@ func run() error {
 		if !res {
 			running.Set(false)
 		}
+		sdl.Delay(16)
 	}
 
 	// Wait goroutines for computing

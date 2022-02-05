@@ -9,7 +9,7 @@ import (
 )
 
 func dbgpr(format string, v ...interface{}) {
-	if false {
+	if true {
 		log.Printf(format, v...)
 	}
 }
@@ -982,7 +982,7 @@ func (cpu *CPU) Step() (uint, error) {
 	case opcode == 0xcd || // CALL a16
 		(opLow%8 == 4 && (opHigh == 0xc || opHigh == 0xd)): // CALL (NZ|Z|NC|C), a16
 		var strIdx uint8 = 0
-		if opLow%8 == 0 {
+		if opLow%8 == 4 {
 			strIdx = (opcode - 0xc4) / 8
 		}
 		dbgpr("0x%04x: CALL %s0x%x", cpu.PC(), cc2str(strIdx, true), imm16)
@@ -1066,7 +1066,7 @@ func (cpu *CPU) Step() (uint, error) {
 			dbgpr("0x%04x: LD A, (C)", cpu.PC())
 			cpu.SetA(mmu.Get8(addr))
 		}
-		cpu.IncPC(2)
+		cpu.IncPC(1)
 
 	case opcode == 0xe8: // ADD SP, r8
 		dbgpr("0x%04x: ADD SP, 0x%x", cpu.PC(), imm8)

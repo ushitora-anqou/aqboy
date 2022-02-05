@@ -1,6 +1,7 @@
 package mmu
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/ushitora-anqou/aqboy/bus"
@@ -51,6 +52,10 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 	cpu := mmu.bus.CPU
 	ppu := mmu.bus.PPU
 	timer := mmu.bus.Timer
+
+	if addr == 0xd820 {
+		fmt.Printf(">>>>ADDRd820>>>> %x\n", val)
+	}
 
 	switch {
 	case 0x8000 <= addr && addr <= 0x9FFF:

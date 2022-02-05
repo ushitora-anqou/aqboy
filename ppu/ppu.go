@@ -1,9 +1,5 @@
 package ppu
 
-import (
-	"log"
-)
-
 const LCD_WIDTH = 160
 const LCD_HEIGHT = 144
 const BG_PX_WIDTH = 256
@@ -59,7 +55,6 @@ func (ppu *PPU) Get8(addr uint16) uint8 {
 }
 
 func (ppu *PPU) Set8(addr uint16, val uint8) {
-	log.Printf(">>>>> PPU Set8 %x %d", addr, val)
 	ppu.vram[addr-0x8000] = val
 }
 

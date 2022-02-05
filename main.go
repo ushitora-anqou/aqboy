@@ -173,6 +173,14 @@ func run() error {
 		breakpointAddr = &addru16
 	}
 
+	// Build a new CPU, MMU, and PPU
+	cpu := cpu.NewCPU()
+	ppu := ppu.NewPPU()
+	mmu, err := mmu.NewMMU(ppu, romPath)
+	if err != nil {
+		return err
+	}
+
 	// Initialize SDL
 	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
 		log.Fatal(err)
@@ -182,14 +190,6 @@ func run() error {
 	wind, err := NewSDLWindow()
 	if err != nil {
 		log.Fatal(err)
-	}
-
-	// Build a new CPU, MMU, and PPU
-	cpu := cpu.NewCPU()
-	ppu := ppu.NewPPU()
-	mmu, err := mmu.NewMMU(ppu, romPath)
-	if err != nil {
-		return err
 	}
 
 	// Prepare shared variables

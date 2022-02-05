@@ -160,16 +160,16 @@ func (cpu *CPU) L() uint8 {
 	return cpu.l
 }
 func (cpu *CPU) AF() uint16 {
-	return ((uint16)(cpu.a) << 8) + (uint16)(cpu.f)
+	return ((uint16)(cpu.A()) << 8) + (uint16)(cpu.F())
 }
 func (cpu *CPU) BC() uint16 {
-	return ((uint16)(cpu.b) << 8) + (uint16)(cpu.c)
+	return ((uint16)(cpu.B()) << 8) + (uint16)(cpu.C())
 }
 func (cpu *CPU) DE() uint16 {
-	return ((uint16)(cpu.d) << 8) + (uint16)(cpu.e)
+	return ((uint16)(cpu.D()) << 8) + (uint16)(cpu.E())
 }
 func (cpu *CPU) HL() uint16 {
-	return ((uint16)(cpu.h) << 8) + (uint16)(cpu.l)
+	return ((uint16)(cpu.H()) << 8) + (uint16)(cpu.L())
 }
 func (cpu *CPU) SetPC(pc uint16) {
 	cpu.pc = pc
@@ -184,7 +184,7 @@ func (cpu *CPU) SetA(a uint8) {
 	cpu.a = a
 }
 func (cpu *CPU) SetF(f uint8) {
-	cpu.f = f
+	cpu.f = f & 0xf0
 }
 func (cpu *CPU) SetB(b uint8) {
 	cpu.b = b
@@ -205,20 +205,20 @@ func (cpu *CPU) SetL(l uint8) {
 	cpu.l = l
 }
 func (cpu *CPU) SetAF(af uint16) {
-	cpu.a = (uint8)(af >> 8)
-	cpu.f = (uint8)(af)
+	cpu.SetA(uint8(af >> 8))
+	cpu.SetF(uint8(af))
 }
 func (cpu *CPU) SetBC(bc uint16) {
-	cpu.b = (uint8)(bc >> 8)
-	cpu.c = (uint8)(bc)
+	cpu.SetB(uint8(bc >> 8))
+	cpu.SetC(uint8(bc))
 }
 func (cpu *CPU) SetDE(de uint16) {
-	cpu.d = (uint8)(de >> 8)
-	cpu.e = (uint8)(de)
+	cpu.SetD(uint8(de >> 8))
+	cpu.SetE(uint8(de))
 }
 func (cpu *CPU) SetHL(hl uint16) {
-	cpu.h = (uint8)(hl >> 8)
-	cpu.l = (uint8)(hl)
+	cpu.SetH(uint8(hl >> 8))
+	cpu.SetL(uint8(hl))
 }
 func (cpu *CPU) IncHL() {
 	cpu.SetHL(cpu.HL() + 1)
@@ -227,22 +227,22 @@ func (cpu *CPU) DecHL() {
 	cpu.SetHL(cpu.HL() - 1)
 }
 func (cpu *CPU) FlagZ() bool {
-	return ((cpu.f & (1 << 7)) != 0)
+	return ((cpu.F() & (1 << 7)) != 0)
 }
 func (cpu *CPU) FlagN() bool {
-	return ((cpu.f & (1 << 6)) != 0)
+	return ((cpu.F() & (1 << 6)) != 0)
 }
 func (cpu *CPU) FlagH() bool {
-	return ((cpu.f & (1 << 5)) != 0)
+	return ((cpu.F() & (1 << 5)) != 0)
 }
 func (cpu *CPU) FlagC() bool {
-	return ((cpu.f & (1 << 4)) != 0)
+	return ((cpu.F() & (1 << 4)) != 0)
 }
 func (cpu *CPU) SetFlag(flag bool, n uint) {
 	if flag {
-		cpu.f |= (1 << n)
+		cpu.SetF(cpu.F() | (1 << n))
 	} else {
-		cpu.f &= compl(1 << n)
+		cpu.SetF(cpu.F() &^ (1 << n))
 	}
 }
 func (cpu *CPU) SetFlagZ(flag bool) {
@@ -488,6 +488,14 @@ func (cpu *CPU) ret(mmu *mmu.MMU) {
 	cpu.SetPC(addr)
 }
 
+func (cpu *CPU) addSP8(val uint8) uint16 {
+	sp := cpu.SP()
+	_, carry := add8(uint8(sp), val, false)
+	_, halfCarry := add4(uint8(sp), val, false)
+	cpu.SetFlagZNHC(false, false, halfCarry, carry)
+	return sp + uint16(int8(val)) // NOTE: sign extension
+}
+
 func (cpu *CPU) stepCB(mmu *mmu.MMU) {
 	opcode := mmu.Get8(cpu.PC())
 	reg := opcode % 8
@@ -544,7 +552,7 @@ func (cpu *CPU) stepCB(mmu *mmu.MMU) {
 	case 0x80 <= opcode && opcode <= 0xbf: // RES 0-7, (B|C|D|E|H|L|(HL)|A)
 		index := (opcode - 0x80) / 8
 		dbgpr("0x%04x: RES %d, %s", cpu.PC(), index, reg2str(reg))
-		res = regVal ^ (1 << index)
+		res = regVal &^ (1 << index)
 
 	case 0xc0 <= opcode && opcode <= 0xff: // SET 0-7, (B|C|D|E|H|L|(HL)|A)
 		index := (opcode - 0xc0) / 8
@@ -626,7 +634,7 @@ func (cpu *CPU) Step(mmu *mmu.MMU) error {
 		case 0x0f: // RRCA
 			dbgpr("0x%04x: RRCA", cpu.PC())
 			res, carry = cpu.rrc(cpu.A())
-		case 0x18: // RLA
+		case 0x17: // RLA
 			dbgpr("0x%04x: RLA", cpu.PC())
 			res, carry = cpu.rl(cpu.A())
 		case 0x1f: // RRA
@@ -634,7 +642,7 @@ func (cpu *CPU) Step(mmu *mmu.MMU) error {
 			res, carry = cpu.rr(cpu.A())
 		}
 		cpu.SetA(res)
-		cpu.SetFlagZNHC(res == 0, false, false, carry)
+		cpu.SetFlagZNHC(false, false, false, carry)
 		cpu.IncPC(1)
 
 	case opcode == 0x08: // LD (a16), SP
@@ -691,8 +699,29 @@ func (cpu *CPU) Step(mmu *mmu.MMU) error {
 
 	case opcode == 0x27: // DAA
 		dbgpr("0x%04x: DAA", cpu.PC())
-		//cpu.IncPC(1)
-		return fmt.Errorf("DAA is not supported yet")
+
+		// Thanks to: https://forums.nesdev.org/viewtopic.php?t=15944
+		a := cpu.A()
+		n, h, c := cpu.FlagN(), cpu.FlagH(), cpu.FlagC()
+		if n { // After a subtraction, only adjust if (half-)carry occurred
+			if c {
+				a -= 0x60
+			}
+			if h {
+				a -= 0x06
+			}
+		} else { // After an addition, adjust if (half-)carry occurred or if result is out of bounds
+			if c || a > 0x99 {
+				a += 0x60
+				c = true
+			}
+			if h || (a&0x0f) > 0x09 {
+				a += 0x06
+			}
+		}
+		cpu.SetA(a)
+		cpu.SetFlagZNHC(a == 0, n, false, c)
+		cpu.IncPC(1)
 
 	case opcode == 0x2f: // CPL
 		dbgpr("0x%04x: CPL", cpu.PC())
@@ -879,11 +908,8 @@ func (cpu *CPU) Step(mmu *mmu.MMU) error {
 
 	case opcode == 0xe8: // ADD SP, r8
 		dbgpr("0x%04x: ADD SP, 0x%x", cpu.PC(), imm8)
-		sp := cpu.SP()
-		_, carry := add8(uint8(sp), imm8, false)
-		_, halfCarry := add4(uint8(sp), imm8, false)
-		cpu.SetSP(sp + uint16(imm8))
-		cpu.SetFlagZNHC(false, false, halfCarry, carry)
+		res := cpu.addSP8(imm8)
+		cpu.SetSP(res)
 		cpu.IncPC(2)
 
 	case opcode == 0xe9: // JP (HL)
@@ -913,11 +939,8 @@ func (cpu *CPU) Step(mmu *mmu.MMU) error {
 
 	case opcode == 0xf8: // LD HL, SP+r8
 		dbgpr("0x%04x: LD HL, SP+0x%x", cpu.PC(), imm8)
-		sp := cpu.SP()
-		_, carry := add8(uint8(sp), imm8, false)
-		_, halfCarry := add4(uint8(sp), imm8, false)
-		cpu.SetHL(sp + uint16(imm8))
-		cpu.SetFlagZNHC(false, false, halfCarry, carry)
+		res := cpu.addSP8(imm8)
+		cpu.SetHL(res)
 		cpu.IncPC(2)
 
 	case opcode == 0xf9: // LD SP, HL

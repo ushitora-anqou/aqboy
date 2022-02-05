@@ -12,6 +12,7 @@ import (
 
 	"github.com/veandco/go-sdl2/sdl"
 
+	"github.com/ushitora-anqou/aqboy/bus"
 	"github.com/ushitora-anqou/aqboy/cpu"
 	"github.com/ushitora-anqou/aqboy/mmu"
 	"github.com/ushitora-anqou/aqboy/ppu"
@@ -203,9 +204,10 @@ func run() error {
 	}
 
 	// Build a new CPU, MMU, and PPU
-	cpu := cpu.NewCPU()
-	ppu := ppu.NewPPU()
-	mmu, err := mmu.NewMMU(cpu, ppu, romPath)
+	bus := bus.NewBus()
+	cpu := cpu.NewCPU(bus)
+	ppu := ppu.NewPPU(bus)
+	mmu, err := mmu.NewMMU(bus, romPath)
 	if err != nil {
 		return err
 	}
@@ -220,6 +222,9 @@ func run() error {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// Build up the bus
+	bus.Register(cpu, mmu, ppu, wind)
 
 	// Prepare shared variables
 	running := NewAtomicBool(true)
@@ -237,11 +242,11 @@ func run() error {
 			}
 
 			var tick uint
-			tick, errCPU = cpu.Step(mmu)
+			tick, errCPU = cpu.Step()
 			if errCPU != nil {
 				break
 			}
-			ppu.Update(wind, tick)
+			ppu.Update(tick)
 
 			// Synchronize by sleeping
 			synchronizer.maySleep(tick)

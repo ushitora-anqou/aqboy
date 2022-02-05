@@ -3,8 +3,7 @@ package mmu
 import (
 	"log"
 
-	"github.com/ushitora-anqou/aqboy/cpu"
-	"github.com/ushitora-anqou/aqboy/ppu"
+	"github.com/ushitora-anqou/aqboy/bus"
 )
 
 func dbgpr(format string, v ...interface{}) {
@@ -29,20 +28,18 @@ type MMU struct {
 		FF80-FFFE  High RAM (HRAM)
 		FFFF-FFFF  Interrupts Enable Register (IE)
 	*/
-	cpu        *cpu.CPU
-	ppu        *ppu.PPU
+	bus        *bus.Bus
 	cat        *Catridge
 	wram, hram []uint8
 }
 
-func NewMMU(cpu *cpu.CPU, ppu *ppu.PPU, catridgeFilePath string) (*MMU, error) {
+func NewMMU(bus *bus.Bus, catridgeFilePath string) (*MMU, error) {
 	cat, err := NewCatridge(catridgeFilePath)
 	if err != nil {
 		return nil, err
 	}
 	mmu := &MMU{
-		cpu:  cpu,
-		ppu:  ppu,
+		bus:  bus,
 		cat:  cat,
 		wram: make([]uint8, 0x2000),
 		hram: make([]uint8, 0x007f),
@@ -51,9 +48,11 @@ func NewMMU(cpu *cpu.CPU, ppu *ppu.PPU, catridgeFilePath string) (*MMU, error) {
 }
 
 func (mmu *MMU) Set8(addr uint16, val uint8) {
+	cpu := mmu.bus.CPU
+	ppu := mmu.bus.PPU
 	switch {
 	case 0x8000 <= addr && addr <= 0x9FFF:
-		mmu.ppu.Set8(addr, val)
+		ppu.Set8(addr, val)
 		return
 	case 0xc000 <= addr && addr <= 0xdfff:
 		mmu.wram[addr-0xc000] = val
@@ -81,7 +80,7 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 		dbgpr("\t<<<WRITE: TAC Timer Control: %v %v>>>", timerEnable, inputClockSelect)
 	case 0xff0f:
 		dbgpr("\t<<<WRITE: IF Interrupt Flag: %b>>>", val)
-		mmu.cpu.SetIF(val)
+		cpu.SetIF(val)
 	case 0xff24:
 		outputVinToSO2 := (val >> 7) & 1
 		so2OutputLevel := (val >> 4) & 7
@@ -96,16 +95,16 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 		dbgpr("\t<<<WRITE: NR52 Sound on/off: %v %08b>>>", allSoundOnOff, soundOnFlag)
 	case 0xff40:
 		dbgpr("\t<<<WRITE: LCDC - LCD Control: %08b>>>", val)
-		mmu.ppu.SetLCDC(val)
+		ppu.SetLCDC(val)
 	case 0xff42:
 		dbgpr("\t<<<WRITE: SCY Scroll Y: %03x>>>", val)
-		mmu.ppu.SetSCY(val)
+		ppu.SetSCY(val)
 	case 0xff43:
 		dbgpr("\t<<<WRITE: SCX Scroll X: %03x>>>", val)
-		mmu.ppu.SetSCX(val)
+		ppu.SetSCX(val)
 	case 0xff47:
 		dbgpr("\t<<<WRITE: BGP BG Palette Data Non CGB Mode Only: %08b>>>", val)
-		mmu.ppu.SetBGP(val)
+		ppu.SetBGP(val)
 	case 0xff4d:
 		dbgpr("\t<<<WRITE: KEY1 CGB Mode Only Prepare Speed Switch>>>")
 	case 0xff4f:
@@ -116,20 +115,23 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 		dbgpr("\t<<<WRITE: BCPD/BGPD CGB Mode Only Background Palette Data>>>")
 	case 0xffff:
 		dbgpr("\t<<<WRITE: IE Interrupt Enable: %b>>>", val)
-		mmu.cpu.SetIE(val)
+		cpu.SetIE(val)
 	default:
 		log.Fatalf("Invalid memory access of Set8: 0x%02x at 0x%08x", val, addr)
 	}
 }
 
 func (mmu *MMU) Get8(addr uint16) uint8 {
+	ppu := mmu.bus.PPU
+	cpu := mmu.bus.CPU
+
 	switch {
 	case 0x0000 <= addr && addr <= 0x3FFF:
 		return mmu.cat.rom[addr]
 	case 0x4000 <= addr && addr <= 0x7FFF:
 		return mmu.cat.rom[addr]
 	case 0x8000 <= addr && addr <= 0x9FFF:
-		return mmu.ppu.Get8(addr)
+		return ppu.Get8(addr)
 	case 0xc000 <= addr && addr <= 0xdfff:
 		return mmu.wram[addr-0xc000]
 	case 0xe000 <= addr && addr <= 0xfdff:
@@ -145,10 +147,10 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 		dbgpr("\t<<<READ: TAC Timer Control>>>")
 	case 0xff0f:
 		dbgpr("\t<<<READ: IF Interrupt Flag>>>")
-		return mmu.cpu.IF()
+		return cpu.IF()
 	case 0xffff:
 		dbgpr("\t<<<READ: IE Interrupt Enable>>>")
-		return mmu.cpu.IE()
+		return cpu.IE()
 	case 0xff24:
 		dbgpr("\t<<<READ: NR50 Channel control / On-OFF / Volume>>>")
 	case 0xff25:
@@ -157,10 +159,10 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 		dbgpr("\t<<<READ: NR52 Sound on/off>>>")
 	case 0xff40:
 		dbgpr("\t<<<READ: LCDC LCD Control>>>")
-		return mmu.ppu.LCDC()
+		return ppu.LCDC()
 	case 0xff44:
 		dbgpr("\t<<<READ: LY - LCDC Y-Coordinate>>>")
-		return mmu.ppu.LY()
+		return ppu.LY()
 	case 0xff4d:
 		dbgpr("\t<<<READ: KEY1 CGB Mode Only Prepare Speed Switch>>>")
 	case 0xff68:

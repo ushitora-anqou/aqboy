@@ -1,13 +1,11 @@
 package ppu
 
+import "github.com/ushitora-anqou/aqboy/bus"
+
 const LCD_WIDTH = 160
 const LCD_HEIGHT = 144
 const BG_PX_WIDTH = 256
 const BG_PX_HEIGHT = 256
-
-type LCD interface {
-	DrawLine(ly int, scanline []uint8) error
-}
 
 type pixelsBuilder struct {
 	scx, scy int
@@ -39,15 +37,17 @@ func (b *pixelsBuilder) set(srcX, srcY int, pixel uint8) {
 }
 
 type PPU struct {
+	bus                           *bus.Bus
 	vram                          [0x2000]uint8
 	scx, scy, bgp, mode, lcdc, ly uint8
 	tick                          uint
 }
 
-func NewPPU() *PPU {
-	ppu := &PPU{}
-	ppu.mode = 2
-	return ppu
+func NewPPU(bus *bus.Bus) *PPU {
+	return &PPU{
+		bus:  bus,
+		mode: 2,
+	}
 }
 
 func (ppu *PPU) Get8(addr uint16) uint8 {
@@ -94,7 +94,7 @@ func (ppu *PPU) SetBGP(bgp uint8) {
 	ppu.bgp = bgp
 }
 
-func (ppu *PPU) drawLine(lcd LCD) error {
+func (ppu *PPU) drawLine() error {
 	scanline := [LCD_WIDTH]uint8{}
 	y := int(ppu.ly + ppu.scy) // NOTE: wrap around
 	tile_y := y / 8
@@ -112,11 +112,11 @@ func (ppu *PPU) drawLine(lcd LCD) error {
 		color := (ppu.BGP() >> (2 * paletteIdx)) & 3
 		scanline[x] = color
 	}
-	lcd.DrawLine(int(ppu.ly), scanline[:])
+	ppu.bus.LCD.DrawLine(int(ppu.ly), scanline[:])
 	return nil
 }
 
-func (ppu *PPU) Update(lcd LCD, elapsedTick uint) error {
+func (ppu *PPU) Update(elapsedTick uint) error {
 	ppu.tick += elapsedTick
 	switch {
 	case ppu.mode == 2 && ppu.tick >= 80: // OAM Search
@@ -126,7 +126,7 @@ func (ppu *PPU) Update(lcd LCD, elapsedTick uint) error {
 	case ppu.mode == 3 && ppu.tick >= 168: // Pixel Transfer
 		ppu.tick -= 168
 		ppu.mode = 0
-		ppu.drawLine(lcd)
+		ppu.drawLine()
 
 	case ppu.mode == 0 && ppu.tick >= 208: // H-Blank
 		ppu.tick -= 208

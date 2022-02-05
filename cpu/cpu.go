@@ -4,14 +4,9 @@ import (
 	"fmt"
 	"log"
 	"math/bits"
-)
 
-type MMU interface {
-	Get8(addr uint16) uint8
-	Get16(addr uint16) uint16
-	Set8(addr uint16, val uint8)
-	Set16(addr uint16, val uint16)
-}
+	"github.com/ushitora-anqou/aqboy/bus"
+)
 
 func dbgpr(format string, v ...interface{}) {
 	if false {
@@ -160,24 +155,26 @@ func (ib *InterruptBits) set(val uint8) {
 }
 
 type CPU struct {
+	bus                    *bus.Bus
 	pc, sp                 uint16
 	a, f, b, c, d, e, h, l uint8
 	ime                    bool // Interrupt Master Enable flag (IME)
 	intEnable, intFlag     InterruptBits
 }
 
-func NewCPU() *CPU {
-	cpu := &CPU{}
-	cpu.a = 0x11
-	cpu.f = 0x80
-	cpu.b = 0x00
-	cpu.c = 0x00
-	cpu.d = 0xff
-	cpu.e = 0x56
-	cpu.sp = 0xfffe
-	cpu.pc = 0x100
-	cpu.ime = false
-	return cpu
+func NewCPU(bus *bus.Bus) *CPU {
+	return &CPU{
+		bus: bus,
+		a:   0x11,
+		f:   0x80,
+		b:   0x00,
+		c:   0x00,
+		d:   0xff,
+		e:   0x56,
+		sp:  0xfffe,
+		pc:  0x0100,
+		ime: false,
+	}
 }
 
 func (cpu *CPU) PC() uint16 {
@@ -330,7 +327,7 @@ func (cpu *CPU) IF() uint8 {
 	return cpu.intFlag.get()
 }
 
-func (cpu *CPU) getReg(mmu MMU, num uint8) uint8 {
+func (cpu *CPU) getReg(num uint8) uint8 {
 	switch num {
 	case 0:
 		return cpu.B()
@@ -345,7 +342,7 @@ func (cpu *CPU) getReg(mmu MMU, num uint8) uint8 {
 	case 5:
 		return cpu.L()
 	case 6:
-		return mmu.Get8(cpu.HL())
+		return cpu.bus.MMU.Get8(cpu.HL())
 	case 7:
 		return cpu.A()
 	}
@@ -373,7 +370,7 @@ func (cpu *CPU) getReg16(dst uint8, is3rdSP bool) uint16 {
 	return 0
 }
 
-func (cpu *CPU) setReg16(mmu MMU, dst uint8, val uint16, is3rdSP bool) {
+func (cpu *CPU) setReg16(dst uint8, val uint16, is3rdSP bool) {
 	switch dst {
 	case 0:
 		cpu.SetBC(val)
@@ -392,7 +389,7 @@ func (cpu *CPU) setReg16(mmu MMU, dst uint8, val uint16, is3rdSP bool) {
 	}
 }
 
-func (cpu *CPU) setReg(mmu MMU, dst, val uint8) {
+func (cpu *CPU) setReg(dst, val uint8) {
 	switch dst {
 	case 0:
 		cpu.SetB(val)
@@ -407,7 +404,7 @@ func (cpu *CPU) setReg(mmu MMU, dst, val uint8) {
 	case 5:
 		cpu.SetL(val)
 	case 6:
-		mmu.Set8(cpu.HL(), val)
+		cpu.bus.MMU.Set8(cpu.HL(), val)
 	case 7:
 		cpu.SetA(val)
 	default:
@@ -416,18 +413,18 @@ func (cpu *CPU) setReg(mmu MMU, dst, val uint8) {
 	return
 }
 
-func (cpu *CPU) incReg(mmu MMU, reg uint8) (uint8, bool) {
-	src := cpu.getReg(mmu, reg)
+func (cpu *CPU) incReg(reg uint8) (uint8, bool) {
+	src := cpu.getReg(reg)
 	res := src + 1
-	cpu.setReg(mmu, reg, res)
+	cpu.setReg(reg, res)
 	_, halfCarry := add4(src, 1, false)
 	return res, halfCarry
 }
 
-func (cpu *CPU) decReg(mmu MMU, reg uint8) (uint8, bool) {
-	src := cpu.getReg(mmu, reg)
+func (cpu *CPU) decReg(reg uint8) (uint8, bool) {
+	src := cpu.getReg(reg)
 	res := src - 1
-	cpu.setReg(mmu, reg, res)
+	cpu.setReg(reg, res)
 	_, halfCarry := sub4(src, 1, false)
 	return res, halfCarry
 }
@@ -526,28 +523,28 @@ func (cpu *CPU) srl(val uint8) (res uint8, carry bool) {
 	return
 }
 
-func (cpu *CPU) push16(mmu MMU, val uint16) {
+func (cpu *CPU) push16(val uint16) {
 	sp := cpu.SP()
 	sp -= 2
-	mmu.Set16(sp, val)
+	cpu.bus.MMU.Set16(sp, val)
 	cpu.SetSP(sp)
 }
 
-func (cpu *CPU) pop16(mmu MMU) uint16 {
+func (cpu *CPU) pop16() uint16 {
 	sp := cpu.SP()
-	val := mmu.Get16(sp)
+	val := cpu.bus.MMU.Get16(sp)
 	sp += 2
 	cpu.SetSP(sp)
 	return val
 }
 
-func (cpu *CPU) call(mmu MMU, addr uint16) {
-	cpu.push16(mmu, cpu.PC())
+func (cpu *CPU) call(addr uint16) {
+	cpu.push16(cpu.PC())
 	cpu.SetPC(addr)
 }
 
-func (cpu *CPU) ret(mmu MMU) {
-	addr := cpu.pop16(mmu)
+func (cpu *CPU) ret() {
+	addr := cpu.pop16()
 	cpu.SetPC(addr)
 }
 
@@ -559,7 +556,7 @@ func (cpu *CPU) addSP8(val uint8) uint16 {
 	return sp + uint16(int8(val)) // NOTE: sign extension
 }
 
-func (cpu *CPU) handleInterrupt(mmu MMU) {
+func (cpu *CPU) handleInterrupt() {
 	if !cpu.ime {
 		return
 	}
@@ -568,7 +565,7 @@ func (cpu *CPU) handleInterrupt(mmu MMU) {
 		if !cpu.intEnable.getN(i) || !cpu.intFlag.getN(i) {
 			continue
 		}
-		cpu.push16(mmu, cpu.PC())
+		cpu.push16(cpu.PC())
 		cpu.SetPC(uint16(0x40 + 0x08*i))
 		cpu.intFlag.setN(i, false)
 		cpu.SetIME(false)
@@ -635,10 +632,10 @@ func getOpTick(opcode, opcode2 uint8, taken bool) uint {
 	}[opcode]
 }
 
-func (cpu *CPU) stepCB(mmu MMU) {
-	opcode := mmu.Get8(cpu.PC())
+func (cpu *CPU) stepCB() {
+	opcode := cpu.bus.MMU.Get8(cpu.PC())
 	reg := opcode % 8
-	regVal := cpu.getReg(mmu, reg)
+	regVal := cpu.getReg(reg)
 	res := regVal
 	z, n, h, c := cpu.FlagZ(), cpu.FlagN(), cpu.FlagH(), cpu.FlagC()
 
@@ -698,14 +695,15 @@ func (cpu *CPU) stepCB(mmu MMU) {
 		dbgpr("0x%04x: SET %d, %s", cpu.PC(), index, reg2str(reg))
 		res = regVal | (1 << index)
 	}
-	cpu.setReg(mmu, reg, res)
+	cpu.setReg(reg, res)
 	cpu.SetFlagZNHC(z, n, h, c)
 	cpu.IncPC(1)
 }
 
-func (cpu *CPU) Step(mmu MMU) (uint, error) {
-	cpu.handleInterrupt(mmu)
+func (cpu *CPU) Step() (uint, error) {
+	cpu.handleInterrupt()
 
+	mmu := cpu.bus.MMU
 	opcode := mmu.Get8(cpu.PC())
 	opLow := opcode & 0x0f
 	opHigh := opcode >> 4
@@ -720,7 +718,7 @@ func (cpu *CPU) Step(mmu MMU) (uint, error) {
 
 	case opLow == 0x01 && (0 <= opHigh && opHigh <= 3): // LD (BC|DE|HL|SP), d16
 		dbgpr("0x%04x: LD %s, 0x%x", cpu.PC(), regBC_DE_HL_SP_ToStr(opHigh), imm16)
-		cpu.setReg16(mmu, opHigh, imm16, true)
+		cpu.setReg16(opHigh, imm16, true)
 		cpu.IncPC(3)
 
 	case opLow == 0x02 && (0 <= opHigh && opHigh <= 3): // LD ((BC)|(DE)|(HL+)|(HL-)), A
@@ -743,27 +741,27 @@ func (cpu *CPU) Step(mmu MMU) (uint, error) {
 		index := opHigh
 		dbgpr("0x%04x: INC %s", cpu.PC(), regBC_DE_HL_SP_ToStr(index))
 		val := cpu.getReg16(index, true)
-		cpu.setReg16(mmu, index, val+1, true)
+		cpu.setReg16(index, val+1, true)
 		cpu.IncPC(1)
 
 	case (opLow%8 == 4) && (0 <= opHigh && opHigh <= 3): // INC (B|C|D|E|H|L|(HL)|A)
 		reg := (opcode - 0x04) / 8
 		dbgpr("0x%04x: INC %s", cpu.PC(), reg2str(reg))
-		val, halfCarry := cpu.incReg(mmu, reg)
+		val, halfCarry := cpu.incReg(reg)
 		cpu.SetFlagZNHC(val == 0, false, halfCarry, cpu.FlagC())
 		cpu.IncPC(1)
 
 	case (opLow%8 == 5) && (0 <= opHigh && opHigh <= 3): // DEC (B|C|D|E|H|L|(HL)|A)
 		reg := (opcode - 0x05) / 8
 		dbgpr("0x%04x: DEC %s", cpu.PC(), reg2str(reg))
-		val, halfCarry := cpu.decReg(mmu, reg)
+		val, halfCarry := cpu.decReg(reg)
 		cpu.SetFlagZNHC(val == 0, true, halfCarry, cpu.FlagC())
 		cpu.IncPC(1)
 
 	case (opLow%8 == 6) && (0 <= opHigh && opHigh <= 3): // LD (B|C|D|E|H|L|(HL)|A), d8
 		reg := (opcode - 0x06) / 8
 		dbgpr("0x%04x: LD %s, 0x%x", cpu.PC(), reg2str(reg), imm8)
-		cpu.setReg(mmu, reg, imm8)
+		cpu.setReg(reg, imm8)
 		cpu.IncPC(2)
 
 	case (opLow%8 == 7) && (0 <= opHigh && opHigh <= 1): // RLCA|RRCA|RLA|RRA
@@ -826,7 +824,7 @@ func (cpu *CPU) Step(mmu MMU) (uint, error) {
 		index := opHigh
 		dbgpr("0x%04x: DEC %s", cpu.PC(), regBC_DE_HL_SP_ToStr(index))
 		val := cpu.getReg16(index, true)
-		cpu.setReg16(mmu, index, val-1, true)
+		cpu.setReg16(index, val-1, true)
 		cpu.IncPC(1)
 
 	case opcode == 0x18 || // JR r8
@@ -886,8 +884,8 @@ func (cpu *CPU) Step(mmu MMU) (uint, error) {
 		reg1 := (opcode & 0x3f) >> 3
 		reg2 := (opcode & 0x07)
 		dbgpr("0x%04x: LD %s, %s", cpu.PC(), reg2str(reg1), reg2str(reg2))
-		val := cpu.getReg(mmu, reg2)
-		cpu.setReg(mmu, reg1, val)
+		val := cpu.getReg(reg2)
+		cpu.setReg(reg1, val)
 		cpu.IncPC(1)
 
 	case opcode == 0x76: // HALT
@@ -896,7 +894,7 @@ func (cpu *CPU) Step(mmu MMU) (uint, error) {
 
 	case 0x80 <= opcode && opcode <= 0xbf:
 		reg := (opcode & 0x07)
-		val := cpu.getReg(mmu, reg)
+		val := cpu.getReg(reg)
 		switch {
 		case 0x80 <= opcode && opcode <= 0x87: // ADD A, reg
 			dbgpr("0x%04x: ADD A, %s", cpu.PC(), reg2str(reg))
@@ -935,7 +933,7 @@ func (cpu *CPU) Step(mmu MMU) (uint, error) {
 		if opcode == 0xc9 ||
 			(opcode == 0xc0 && !cpu.FlagZ()) || (opcode == 0xc8 && cpu.FlagZ()) ||
 			(opcode == 0xd0 && !cpu.FlagC()) || (opcode == 0xd8 && cpu.FlagC()) {
-			cpu.ret(mmu)
+			cpu.ret()
 			taken = true
 		} else {
 			cpu.IncPC(1)
@@ -944,7 +942,7 @@ func (cpu *CPU) Step(mmu MMU) (uint, error) {
 	case opLow == 1 && (0xc <= opHigh && opHigh <= 0xf): // POP
 		index := opHigh - 0xc
 		dbgpr("0x%04x: POP %s", cpu.PC(), regBC_DE_HL_AF_ToStr(index))
-		cpu.setReg16(mmu, index, cpu.pop16(mmu), false)
+		cpu.setReg16(index, cpu.pop16(), false)
 		cpu.IncPC(1)
 
 	case opcode == 0xc3 || // JP a16
@@ -974,14 +972,14 @@ func (cpu *CPU) Step(mmu MMU) (uint, error) {
 		if opcode == 0xcd ||
 			(opcode == 0xc4 && !cpu.FlagZ()) || (opcode == 0xcc && cpu.FlagZ()) ||
 			(opcode == 0xd4 && !cpu.FlagC()) || (opcode == 0xdc && cpu.FlagC()) {
-			cpu.call(mmu, imm16)
+			cpu.call(imm16)
 			taken = true
 		}
 
 	case opLow == 5 && (0xc <= opHigh && opHigh <= 0xf):
 		index := opHigh - 0xc
 		dbgpr("0x%04x: PUSH %s", cpu.PC(), regBC_DE_HL_AF_ToStr(index))
-		cpu.push16(mmu, cpu.getReg16(index, false))
+		cpu.push16(cpu.getReg16(index, false))
 		cpu.IncPC(1)
 
 	case opLow%8 == 6 && (0xc <= opHigh && opHigh <= 0xf):
@@ -1017,16 +1015,16 @@ func (cpu *CPU) Step(mmu MMU) (uint, error) {
 		index := opcode - 0xc7
 		dbgpr("0x%04x: RST %02xH", cpu.PC(), index)
 		cpu.IncPC(1)
-		cpu.call(mmu, uint16(index))
+		cpu.call(uint16(index))
 
 	case opcode == 0xcb: // PREFIX CB
 		dbgpr("0x%04x: PREFIX CB", cpu.PC())
 		cpu.IncPC(1)
-		cpu.stepCB(mmu)
+		cpu.stepCB()
 
 	case opcode == 0xd9: // RETI
 		dbgpr("0x%04x: RETI", cpu.PC())
-		cpu.ret(mmu)
+		cpu.ret()
 		cpu.SetIME(true)
 
 	case opcode == 0xe0 || opcode == 0xf0:

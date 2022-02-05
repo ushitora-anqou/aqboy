@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/veandco/go-sdl2/sdl"
 
@@ -156,6 +157,34 @@ func (wind *SDLWindow) Update() (bool, error) {
 	return true, nil
 }
 
+type TimeSynchronizer struct {
+	prevTime      time.Time
+	cnt, interval uint
+}
+
+func NewTimeSynchronizer(interval uint) *TimeSynchronizer {
+	return &TimeSynchronizer{
+		prevTime: time.Now(),
+		cnt:      0,
+		interval: interval,
+	}
+}
+
+func (ts *TimeSynchronizer) maySleep(tick uint) {
+	ts.cnt += tick
+	if ts.cnt < ts.interval {
+		return
+	}
+	ts.cnt -= ts.interval
+	curTime := time.Now()
+	dur := curTime.Sub(ts.prevTime)
+	diff := (1000000 * int(ts.interval) / (4 * 1024 * 1024)) - int(dur.Microseconds())
+	if diff > 0 {
+		time.Sleep(time.Duration(diff) * time.Microsecond)
+	}
+	ts.prevTime = curTime
+}
+
 func run() error {
 	// Parse options and arguments
 	flag.Parse()
@@ -200,16 +229,22 @@ func run() error {
 	var errCPU error = nil
 	wg.Add(1)
 	go func() {
+		sync := NewTimeSynchronizer(16 * 1024 /* interval */)
 		for running.Get() {
 			if breakpointAddr != nil && *breakpointAddr == cpu.PC() {
 				log.Printf("Break at 0x%04x.", cpu.PC())
 				break
 			}
-			errCPU = cpu.Step(mmu)
+
+			var tick uint
+			tick, errCPU = cpu.Step(mmu)
 			if errCPU != nil {
 				break
 			}
-			ppu.Update(wind, 4)
+			ppu.Update(wind, tick)
+
+			// Synchronize time by sleeping
+			sync.maySleep(tick)
 		}
 		running.Set(false)
 		wg.Done()

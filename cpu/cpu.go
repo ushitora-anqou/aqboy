@@ -14,7 +14,7 @@ type MMU interface {
 }
 
 func dbgpr(format string, v ...interface{}) {
-	if true {
+	if false {
 		log.Printf(format, v...)
 	}
 }
@@ -573,6 +573,66 @@ func (cpu *CPU) handleInterrupt(mmu MMU) {
 		cpu.intFlag.setN(i, false)
 		cpu.SetIME(false)
 	}
+
+	// FIXME: Consider elapsed machine cycles?
+}
+
+func getOpTick(opcode, opcode2 uint8, taken bool) uint {
+	switch {
+	case opcode == 0x20 || opcode == 0x28 || opcode == 0x30 || opcode == 0x38: // JR
+		if taken {
+			return 12
+		} else {
+			return 8
+		}
+
+	case opcode == 0xc0 || opcode == 0xc8 || opcode == 0xd0 || opcode == 0xd8: // RET
+		if taken {
+			return 20
+		} else {
+			return 8
+		}
+
+	case opcode == 0xc2 || opcode == 0xca || opcode == 0xd2 || opcode == 0xda: // JP
+		if taken {
+			return 16
+		} else {
+			return 12
+		}
+
+	case opcode == 0xc4 || opcode == 0xcc || opcode == 0xd4 || opcode == 0xdc: // CALL
+		if taken {
+			return 24
+		} else {
+			return 12
+		}
+
+	case opcode == 0xcb: // PREFIX CB
+		if opcode2%8 == 6 {
+			return 16
+		} else {
+			return 8
+		}
+	}
+
+	return []uint{
+		4, 12, 8, 8, 4, 4, 8, 4, 20, 8, 8, 8, 4, 4, 8, 4, // 0x
+		4, 12, 8, 8, 4, 4, 8, 4, 12, 8, 8, 8, 4, 4, 8, 4, // 1x
+		0, 12, 8, 8, 4, 4, 8, 4, 0, 8, 8, 8, 4, 4, 8, 4, // 2x
+		0, 12, 8, 8, 12, 12, 12, 4, 0, 8, 8, 8, 4, 4, 8, 4, // 3x
+		4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4, // 4x
+		4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4, // 5x
+		4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4, // 6x
+		8, 8, 8, 8, 8, 8, 4, 8, 4, 4, 4, 4, 4, 4, 8, 4, // 7x
+		4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4, // 8x
+		4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4, // 9x
+		4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4, // ax
+		4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4, // bx
+		0, 12, 0, 16, 0, 16, 8, 16, 0, 16, 0, 4, 0, 24, 8, 16, // cx
+		0, 12, 0, 0, 0, 16, 8, 16, 0, 16, 0, 0, 0, 0, 8, 16, // dx
+		12, 12, 8, 0, 0, 16, 8, 16, 16, 4, 16, 0, 0, 0, 8, 16, // ex
+		12, 12, 8, 4, 0, 16, 8, 16, 12, 8, 16, 4, 0, 0, 8, 16, // fx
+	}[opcode]
 }
 
 func (cpu *CPU) stepCB(mmu MMU) {
@@ -643,7 +703,7 @@ func (cpu *CPU) stepCB(mmu MMU) {
 	cpu.IncPC(1)
 }
 
-func (cpu *CPU) Step(mmu MMU) error {
+func (cpu *CPU) Step(mmu MMU) (uint, error) {
 	cpu.handleInterrupt(mmu)
 
 	opcode := mmu.Get8(cpu.PC())
@@ -651,6 +711,7 @@ func (cpu *CPU) Step(mmu MMU) error {
 	opHigh := opcode >> 4
 	imm8 := mmu.Get8(cpu.PC() + 1)
 	imm16 := mmu.Get16(cpu.PC() + 1)
+	taken := false
 
 	switch {
 	case opcode == 0x00: // NOP
@@ -775,6 +836,7 @@ func (cpu *CPU) Step(mmu MMU) error {
 			(opcode == 0x20 && !cpu.FlagZ()) || (opcode == 0x28 && cpu.FlagZ()) ||
 			(opcode == 0x30 && !cpu.FlagC()) || (opcode == 0x38 && cpu.FlagC()) {
 			cpu.IncPC(int(int8(imm8)))
+			taken = true
 		}
 		cpu.IncPC(2)
 
@@ -830,7 +892,7 @@ func (cpu *CPU) Step(mmu MMU) error {
 
 	case opcode == 0x76: // HALT
 		dbgpr("0x%04x: HALT", cpu.PC())
-		return fmt.Errorf("HALT is not supported yet")
+		return 0, fmt.Errorf("HALT is not supported yet")
 
 	case 0x80 <= opcode && opcode <= 0xbf:
 		reg := (opcode & 0x07)
@@ -874,6 +936,7 @@ func (cpu *CPU) Step(mmu MMU) error {
 			(opcode == 0xc0 && !cpu.FlagZ()) || (opcode == 0xc8 && cpu.FlagZ()) ||
 			(opcode == 0xd0 && !cpu.FlagC()) || (opcode == 0xd8 && cpu.FlagC()) {
 			cpu.ret(mmu)
+			taken = true
 		} else {
 			cpu.IncPC(1)
 		}
@@ -895,6 +958,7 @@ func (cpu *CPU) Step(mmu MMU) error {
 			(opcode == 0xc2 && !cpu.FlagZ()) || (opcode == 0xca && cpu.FlagZ()) ||
 			(opcode == 0xd2 && !cpu.FlagC()) || (opcode == 0xda && cpu.FlagC()) {
 			cpu.SetPC(imm16)
+			taken = true
 		} else {
 			cpu.IncPC(3)
 		}
@@ -911,6 +975,7 @@ func (cpu *CPU) Step(mmu MMU) error {
 			(opcode == 0xc4 && !cpu.FlagZ()) || (opcode == 0xcc && cpu.FlagZ()) ||
 			(opcode == 0xd4 && !cpu.FlagC()) || (opcode == 0xdc && cpu.FlagC()) {
 			cpu.call(mmu, imm16)
+			taken = true
 		}
 
 	case opLow == 5 && (0xc <= opHigh && opHigh <= 0xf):
@@ -1030,11 +1095,13 @@ func (cpu *CPU) Step(mmu MMU) error {
 		cpu.IncPC(1)
 
 	default:
-		return fmt.Errorf("Illegal instr: 0x%02x at 0x%04x\n", mmu.Get8(cpu.PC()), cpu.PC())
+		return 0, fmt.Errorf("Illegal instr: 0x%02x at 0x%04x\n", mmu.Get8(cpu.PC()), cpu.PC())
 	}
 
 	dbgpr("                af=%04x    bc=%04x    de=%04x    hl=%04x", cpu.AF(), cpu.BC(), cpu.DE(), cpu.HL())
 	dbgpr("                sp=%04x    pc=%04x    Z=%d  N=%d  H=%d  C=%d", cpu.SP(), cpu.PC(), b2u8(cpu.FlagZ()), b2u8(cpu.FlagN()), b2u8(cpu.FlagH()), b2u8(cpu.FlagC()))
 
-	return nil
+	tick := getOpTick(opcode, imm8, taken)
+
+	return tick, nil
 }

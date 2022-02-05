@@ -1,6 +1,10 @@
 package mmu
 
-import "log"
+import (
+	"log"
+
+	"github.com/ushitora-anqou/aqboy/ppu"
+)
 
 func dbgpr(format string, v ...interface{}) {
 	log.Printf(format, v...)
@@ -24,18 +28,19 @@ type MMU struct {
 		FF80-FFFE  High RAM (HRAM)
 		FFFF-FFFF  Interrupts Enable Register (IE)
 	*/
-	cat              *Catridge
-	vram, wram, hram []uint8
+	cat        *Catridge
+	ppu        *ppu.PPU
+	wram, hram []uint8
 }
 
-func NewMMU(catridgeFilePath string) (*MMU, error) {
+func NewMMU(ppu *ppu.PPU, catridgeFilePath string) (*MMU, error) {
 	cat, err := NewCatridge(catridgeFilePath)
 	if err != nil {
 		return nil, err
 	}
 	mmu := &MMU{
 		cat:  cat,
-		vram: make([]uint8, 0x2000),
+		ppu:  ppu,
 		wram: make([]uint8, 0x2000),
 		hram: make([]uint8, 0x007f),
 	}
@@ -45,7 +50,7 @@ func NewMMU(catridgeFilePath string) (*MMU, error) {
 func (mmu *MMU) Set8(addr uint16, val uint8) {
 	switch {
 	case 0x8000 <= addr && addr <= 0x9FFF:
-		mmu.vram[addr-0x8000] = val
+		mmu.ppu.Set8(addr, val)
 		return
 	case 0xc000 <= addr && addr <= 0xdfff:
 		mmu.wram[addr-0xc000] = val
@@ -90,12 +95,16 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 		dbgpr("\t<<<WRITE: NR52 Sound on/off: %v %08b>>>", allSoundOnOff, soundOnFlag)
 	case 0xff40:
 		dbgpr("\t<<<WRITE: LCDC - LCD Control: %08b>>>", val)
+		mmu.ppu.SetLCDC(val)
 	case 0xff42:
 		dbgpr("\t<<<WRITE: SCY Scroll Y: %03x>>>", val)
+		mmu.ppu.SetSCY(val)
 	case 0xff43:
 		dbgpr("\t<<<WRITE: SCX Scroll X: %03x>>>", val)
+		mmu.ppu.SetSCX(val)
 	case 0xff47:
 		dbgpr("\t<<<WRITE: BGP BG Palette Data Non CGB Mode Only: %08b>>>", val)
+		mmu.ppu.SetBGP(val)
 	case 0xff4d:
 		dbgpr("\t<<<WRITE: KEY1 CGB Mode Only Prepare Speed Switch>>>")
 	case 0xff4f:
@@ -123,7 +132,7 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 	case 0x4000 <= addr && addr <= 0x7FFF:
 		return mmu.cat.rom[addr]
 	case 0x8000 <= addr && addr <= 0x9FFF:
-		return mmu.vram[addr-0x8000]
+		return mmu.ppu.Get8(addr)
 	case 0xc000 <= addr && addr <= 0xdfff:
 		return mmu.wram[addr-0xc000]
 	case 0xe000 <= addr && addr <= 0xfdff:
@@ -147,8 +156,10 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 		dbgpr("\t<<<READ: NR52 Sound on/off>>>")
 	case 0xff40:
 		dbgpr("\t<<<READ: LCDC LCD Control>>>")
+		return mmu.ppu.LCDC()
 	case 0xff44:
 		dbgpr("\t<<<READ: LY - LCDC Y-Coordinate>>>")
+		return mmu.ppu.LY()
 	case 0xff4d:
 		dbgpr("\t<<<READ: KEY1 CGB Mode Only Prepare Speed Switch>>>")
 	case 0xff68:

@@ -9,7 +9,7 @@ import (
 )
 
 func dbgpr(format string, v ...interface{}) {
-	log.Printf(format, v...)
+	//log.Printf(format, v...)
 }
 
 func reg2str(index uint8) string {

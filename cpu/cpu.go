@@ -568,7 +568,8 @@ func (cpu *CPU) addSP8(val uint8) uint16 {
 	return sp + uint16(int8(val)) // NOTE: sign extension
 }
 
-func (cpu *CPU) handleInterrupt() {
+func (cpu *CPU) handleInterrupt() uint {
+	var tick uint
 	for i := 0; i < 5; i++ {
 		if !(cpu.intEnable.getN(i) && cpu.intFlag.getN(i)) {
 			continue
@@ -582,10 +583,11 @@ func (cpu *CPU) handleInterrupt() {
 			cpu.intFlag.setN(i, false)
 			cpu.SetIME(false)
 			cpu.SetHalted(false)
-			// FIXME: Consider elapsed machine cycles?
+			tick = 12
 		}
 		break
 	}
+	return tick
 }
 
 func getOpTick(opcode, opcode2 uint8, taken bool) uint {
@@ -728,7 +730,7 @@ func (cpu *CPU) stepCB() {
 }
 
 func (cpu *CPU) Step() (uint, error) {
-	cpu.handleInterrupt()
+	interruptTick := cpu.handleInterrupt()
 
 	if cpu.Halted() {
 		return 4, nil
@@ -1135,5 +1137,5 @@ func (cpu *CPU) Step() (uint, error) {
 
 	tick := getOpTick(opcode, imm8, taken)
 
-	return tick, nil
+	return tick + interruptTick, nil
 }

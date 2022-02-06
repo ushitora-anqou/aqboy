@@ -6,15 +6,8 @@ import (
 	"math/bits"
 
 	"github.com/ushitora-anqou/aqboy/bus"
+	"github.com/ushitora-anqou/aqboy/util"
 )
-
-var TRACE_INSTR bool
-
-func dbgpr(format string, v ...interface{}) {
-	if TRACE_INSTR {
-		log.Printf(format, v...)
-	}
-}
 
 func reg2str(index uint8) string {
 	return []string{"B", "C", "D", "E", "H", "L", "(HL)", "A"}[index]
@@ -41,14 +34,7 @@ func cc2str(index uint8, needTailComma bool) string {
 }
 
 func b2u8(b bool) uint8 {
-	if b {
-		return 1
-	}
-	return 0
-}
-
-func bitN8(n uint8, index int) bool {
-	return ((n >> index) & 1) != 0
+	return util.BoolToU8(b)
 }
 
 func rotateRight8(x uint8, k int) uint8 {
@@ -178,6 +164,14 @@ func NewCPU(bus *bus.Bus) *CPU {
 		pc:  0x0100,
 		ime: false,
 	}
+}
+
+func (cpu *CPU) traceInst(format string, v ...interface{}) {
+	args := []interface{}{cpu.PC()}
+	for _, e := range v {
+		args = append(args, e)
+	}
+	util.Trace("0x%04x: "+format, args...)
 }
 
 func (cpu *CPU) PC() uint16 {
@@ -495,43 +489,43 @@ func (cpu *CPU) cpA(rhs uint8) {
 
 func (cpu *CPU) rlc(val uint8) (res uint8, carry bool) {
 	res = bits.RotateLeft8(val, 1)
-	carry = bitN8(val, 7)
+	carry = ((val >> 7) & 1) != 0
 	return
 }
 
 func (cpu *CPU) rrc(val uint8) (res uint8, carry bool) {
 	res = rotateRight8(val, 1)
-	carry = bitN8(val, 0)
+	carry = ((val >> 0) & 1) != 0
 	return
 }
 
 func (cpu *CPU) rl(val uint8) (res uint8, carry bool) {
 	res = val<<1 | b2u8(cpu.FlagC())
-	carry = bitN8(val, 7)
+	carry = ((val >> 7) & 1) != 0
 	return
 }
 
 func (cpu *CPU) rr(val uint8) (res uint8, carry bool) {
 	res = b2u8(cpu.FlagC())<<7 | val>>1
-	carry = bitN8(val, 0)
+	carry = ((val >> 0) & 1) != 0
 	return
 }
 
 func (cpu *CPU) sla(val uint8) (res uint8, carry bool) {
 	res = val << 1
-	carry = bitN8(val, 7)
+	carry = ((val >> 7) & 1) != 0
 	return
 }
 
 func (cpu *CPU) sra(val uint8) (res uint8, carry bool) {
 	res = val>>1 | val&0x80 /* sign extension */
-	carry = bitN8(val, 0)
+	carry = ((val >> 0) & 1) != 0
 	return
 }
 
 func (cpu *CPU) srl(val uint8) (res uint8, carry bool) {
 	res = val >> 1
-	carry = bitN8(val, 0)
+	carry = ((val >> 0) & 1) != 0
 	return
 }
 
@@ -670,58 +664,58 @@ func (cpu *CPU) stepCB() {
 
 	switch {
 	case 0x00 <= opcode && opcode <= 0x07: // RLC (B|C|D|E|H|L|(HL)|A)
-		dbgpr("0x%04x: RLC %s", cpu.PC(), reg2str(reg))
+		cpu.traceInst("RLC %s", reg2str(reg))
 		res, c = cpu.rlc(regVal)
 		z, n, h = res == 0, false, false
 
 	case 0x08 <= opcode && opcode <= 0x0f: // RRC (B|C|D|E|H|L|(HL)|A)
-		dbgpr("0x%04x: RRC %s", cpu.PC(), reg2str(reg))
+		cpu.traceInst("RRC %s", reg2str(reg))
 		res, c = cpu.rrc(regVal)
 		z, n, h = res == 0, false, false
 
 	case 0x10 <= opcode && opcode <= 0x17: // RL (B|C|D|E|H|L|(HL)|A)
-		dbgpr("0x%04x: RL %s", cpu.PC(), reg2str(reg))
+		cpu.traceInst("RL %s", reg2str(reg))
 		res, c = cpu.rl(regVal)
 		z, n, h = res == 0, false, false
 
 	case 0x18 <= opcode && opcode <= 0x1f: // RR (B|C|D|E|H|L|(HL)|A)
-		dbgpr("0x%04x: RR %s", cpu.PC(), reg2str(reg))
+		cpu.traceInst("RR %s", reg2str(reg))
 		res, c = cpu.rr(regVal)
 		z, n, h = res == 0, false, false
 
 	case 0x20 <= opcode && opcode <= 0x27: // SLA (B|C|D|E|H|L|(HL)|A)
-		dbgpr("0x%04x: SLA %s", cpu.PC(), reg2str(reg))
+		cpu.traceInst("SLA %s", reg2str(reg))
 		res, c = cpu.sla(regVal)
 		z, n, h = res == 0, false, false
 
 	case 0x28 <= opcode && opcode <= 0x2f: // SRA (B|C|D|E|H|L|(HL)|A)
-		dbgpr("0x%04x: SRA %s", cpu.PC(), reg2str(reg))
+		cpu.traceInst("SRA %s", reg2str(reg))
 		res, c = cpu.sra(regVal)
 		z, n, h = res == 0, false, false
 
 	case 0x30 <= opcode && opcode <= 0x37: // SWAP (B|C|D|E|H|L|(HL)|A)
-		dbgpr("0x%04x: SWAP %s", cpu.PC(), reg2str(reg))
+		cpu.traceInst("SWAP %s", reg2str(reg))
 		res = (regVal >> 4) | (regVal << 4)
 		z, n, h, c = res == 0, false, false, false
 
 	case 0x38 <= opcode && opcode <= 0x3f: // SRL (B|C|D|E|H|L|(HL)|A)
-		dbgpr("0x%04x: SRL %s", cpu.PC(), reg2str(reg))
+		cpu.traceInst("SRL %s", reg2str(reg))
 		res, c = cpu.srl(regVal)
 		z, n, h = res == 0, false, false
 
 	case 0x40 <= opcode && opcode <= 0x7f: // BIT 0-7, (B|C|D|E|H|L|(HL)|A)
 		index := (opcode - 0x40) / 8
-		dbgpr("0x%04x: BIT %d, %s", cpu.PC(), index, reg2str(reg))
-		z, n, h, c = !bitN8(regVal, int(index)), false, true, cpu.FlagC()
+		cpu.traceInst("BIT %d, %s", index, reg2str(reg))
+		z, n, h, c = ((regVal>>int(index))&1) == 0, false, true, cpu.FlagC()
 
 	case 0x80 <= opcode && opcode <= 0xbf: // RES 0-7, (B|C|D|E|H|L|(HL)|A)
 		index := (opcode - 0x80) / 8
-		dbgpr("0x%04x: RES %d, %s", cpu.PC(), index, reg2str(reg))
+		cpu.traceInst("RES %d, %s", index, reg2str(reg))
 		res = regVal &^ (1 << index)
 
 	case 0xc0 <= opcode && opcode <= 0xff: // SET 0-7, (B|C|D|E|H|L|(HL)|A)
 		index := (opcode - 0xc0) / 8
-		dbgpr("0x%04x: SET %d, %s", cpu.PC(), index, reg2str(reg))
+		cpu.traceInst("SET %d, %s", index, reg2str(reg))
 		res = regVal | (1 << index)
 	}
 	cpu.setReg(reg, res)
@@ -747,16 +741,16 @@ func (cpu *CPU) Step() (uint, error) {
 	switch {
 
 	case opcode == 0x00: // NOP
-		dbgpr("0x%04x: NOP", cpu.PC())
+		cpu.traceInst("NOP")
 		cpu.IncPC(1)
 
 	case opLow == 0x01 && (0 <= opHigh && opHigh <= 3): // LD (BC|DE|HL|SP), d16
-		dbgpr("0x%04x: LD %s, 0x%x", cpu.PC(), regBC_DE_HL_SP_ToStr(opHigh), imm16)
+		cpu.traceInst("LD %s, 0x%x", regBC_DE_HL_SP_ToStr(opHigh), imm16)
 		cpu.setReg16(opHigh, imm16, true)
 		cpu.IncPC(3)
 
 	case opLow == 0x02 && (0 <= opHigh && opHigh <= 3): // LD ((BC)|(DE)|(HL+)|(HL-)), A
-		dbgpr("0x%04x: LD (%s), A", cpu.PC(), regBC_DE_HLPLUS_HLMINUS_ToStr(opHigh))
+		cpu.traceInst("LD (%s), A", regBC_DE_HLPLUS_HLMINUS_ToStr(opHigh))
 		switch opHigh {
 		case 0:
 			mmu.Set8(cpu.BC(), cpu.A())
@@ -773,28 +767,28 @@ func (cpu *CPU) Step() (uint, error) {
 
 	case (opLow == 0x3) && (0 <= opHigh && opHigh <= 3): // INC (BC|DE|HL|SP)
 		index := opHigh
-		dbgpr("0x%04x: INC %s", cpu.PC(), regBC_DE_HL_SP_ToStr(index))
+		cpu.traceInst("INC %s", regBC_DE_HL_SP_ToStr(index))
 		val := cpu.getReg16(index, true)
 		cpu.setReg16(index, val+1, true)
 		cpu.IncPC(1)
 
 	case (opLow%8 == 4) && (0 <= opHigh && opHigh <= 3): // INC (B|C|D|E|H|L|(HL)|A)
 		reg := (opcode - 0x04) / 8
-		dbgpr("0x%04x: INC %s", cpu.PC(), reg2str(reg))
+		cpu.traceInst("INC %s", reg2str(reg))
 		val, halfCarry := cpu.incReg(reg)
 		cpu.SetFlagZNHC(val == 0, false, halfCarry, cpu.FlagC())
 		cpu.IncPC(1)
 
 	case (opLow%8 == 5) && (0 <= opHigh && opHigh <= 3): // DEC (B|C|D|E|H|L|(HL)|A)
 		reg := (opcode - 0x05) / 8
-		dbgpr("0x%04x: DEC %s", cpu.PC(), reg2str(reg))
+		cpu.traceInst("DEC %s", reg2str(reg))
 		val, halfCarry := cpu.decReg(reg)
 		cpu.SetFlagZNHC(val == 0, true, halfCarry, cpu.FlagC())
 		cpu.IncPC(1)
 
 	case (opLow%8 == 6) && (0 <= opHigh && opHigh <= 3): // LD (B|C|D|E|H|L|(HL)|A), d8
 		reg := (opcode - 0x06) / 8
-		dbgpr("0x%04x: LD %s, 0x%x", cpu.PC(), reg2str(reg), imm8)
+		cpu.traceInst("LD %s, 0x%x", reg2str(reg), imm8)
 		cpu.setReg(reg, imm8)
 		cpu.IncPC(2)
 
@@ -803,16 +797,16 @@ func (cpu *CPU) Step() (uint, error) {
 		var carry bool
 		switch opcode {
 		case 0x07: // RLCA
-			dbgpr("0x%04x: RLCA", cpu.PC())
+			cpu.traceInst("RLCA")
 			res, carry = cpu.rlc(cpu.A())
 		case 0x0f: // RRCA
-			dbgpr("0x%04x: RRCA", cpu.PC())
+			cpu.traceInst("RRCA")
 			res, carry = cpu.rrc(cpu.A())
 		case 0x17: // RLA
-			dbgpr("0x%04x: RLA", cpu.PC())
+			cpu.traceInst("RLA")
 			res, carry = cpu.rl(cpu.A())
 		case 0x1f: // RRA
-			dbgpr("0x%04x: RRA", cpu.PC())
+			cpu.traceInst("RRA")
 			res, carry = cpu.rr(cpu.A())
 		}
 		cpu.SetA(res)
@@ -820,13 +814,13 @@ func (cpu *CPU) Step() (uint, error) {
 		cpu.IncPC(1)
 
 	case opcode == 0x08: // LD (a16), SP
-		dbgpr("0x%04x: LD (0x%04x), SP", cpu.PC(), imm16)
+		cpu.traceInst("LD (0x%04x), SP", imm16)
 		mmu.Set16(imm16, cpu.SP())
 		cpu.IncPC(3)
 
 	case (opLow == 0x9) && (0 <= opHigh && opHigh <= 3): // ADD HL, (BC|DE|HL|SP)
 		index := opHigh
-		dbgpr("0x%04x: ADD HL, %s", cpu.PC(), regBC_DE_HL_SP_ToStr(index))
+		cpu.traceInst("ADD HL, %s", regBC_DE_HL_SP_ToStr(index))
 		rhs := cpu.getReg16(index, true)
 		res, carry := add16(cpu.HL(), rhs, false)
 		_, halfCarry := add12(cpu.HL(), rhs, false)
@@ -835,7 +829,7 @@ func (cpu *CPU) Step() (uint, error) {
 		cpu.IncPC(1)
 
 	case opLow == 0xa && (0 <= opHigh && opHigh <= 3): // LD A, ((BC)|(DE)|(HL+)|(HL-))
-		dbgpr("0x%04x: LD A, (%s)", cpu.PC(), regBC_DE_HLPLUS_HLMINUS_ToStr(opHigh))
+		cpu.traceInst("LD A, (%s)", regBC_DE_HLPLUS_HLMINUS_ToStr(opHigh))
 		switch opHigh {
 		case 0:
 			cpu.SetA(mmu.Get8(cpu.BC()))
@@ -851,19 +845,19 @@ func (cpu *CPU) Step() (uint, error) {
 		cpu.IncPC(1)
 
 	case opcode == 0x10: // STOP
-		dbgpr("0x%04x: STOP", cpu.PC())
+		cpu.traceInst("STOP")
 		cpu.IncPC(2)
 
 	case (opLow == 0xb) && (0 <= opHigh && opHigh <= 3): // DEC (BC|DE|HL|SP)
 		index := opHigh
-		dbgpr("0x%04x: DEC %s", cpu.PC(), regBC_DE_HL_SP_ToStr(index))
+		cpu.traceInst("DEC %s", regBC_DE_HL_SP_ToStr(index))
 		val := cpu.getReg16(index, true)
 		cpu.setReg16(index, val-1, true)
 		cpu.IncPC(1)
 
 	case opcode == 0x18 || // JR r8
 		((opLow == 0 || opLow == 8) && (opHigh == 2 || opHigh == 3)): // JR (NZ|Z|NC|C), r8
-		dbgpr("0x%04x: JR %s0x%x", cpu.PC(), cc2str((opcode-0x18)/8, true), imm8)
+		cpu.traceInst("JR %s0x%x", cc2str((opcode-0x18)/8, true), imm8)
 		if opcode == 0x18 ||
 			(opcode == 0x20 && !cpu.FlagZ()) || (opcode == 0x28 && cpu.FlagZ()) ||
 			(opcode == 0x30 && !cpu.FlagC()) || (opcode == 0x38 && cpu.FlagC()) {
@@ -873,7 +867,7 @@ func (cpu *CPU) Step() (uint, error) {
 		cpu.IncPC(2)
 
 	case opcode == 0x27: // DAA
-		dbgpr("0x%04x: DAA", cpu.PC())
+		cpu.traceInst("DAA")
 
 		// Thanks to: https://forums.nesdev.org/viewtopic.php?t=15944
 		a := cpu.A()
@@ -899,31 +893,31 @@ func (cpu *CPU) Step() (uint, error) {
 		cpu.IncPC(1)
 
 	case opcode == 0x2f: // CPL
-		dbgpr("0x%04x: CPL", cpu.PC())
+		cpu.traceInst("CPL")
 		cpu.SetA(^cpu.A())
 		cpu.SetFlagZNHC(cpu.FlagZ(), true, true, cpu.FlagC())
 		cpu.IncPC(1)
 
 	case opcode == 0x37: // SCF
-		dbgpr("0x%04x: SCF", cpu.PC())
+		cpu.traceInst("SCF")
 		cpu.SetFlagZNHC(cpu.FlagZ(), false, false, true)
 		cpu.IncPC(1)
 
 	case opcode == 0x3f: // CCF
-		dbgpr("0x%04x: CCF", cpu.PC())
+		cpu.traceInst("CCF")
 		cpu.SetFlagZNHC(cpu.FlagZ(), false, false, !cpu.FlagC())
 		cpu.IncPC(1)
 
 	case 0x40 <= opcode && opcode <= 0x7f && opcode != 0x76 /* not HALT */ : // LD reg1,reg2
 		reg1 := (opcode & 0x3f) >> 3
 		reg2 := (opcode & 0x07)
-		dbgpr("0x%04x: LD %s, %s", cpu.PC(), reg2str(reg1), reg2str(reg2))
+		cpu.traceInst("LD %s, %s", reg2str(reg1), reg2str(reg2))
 		val := cpu.getReg(reg2)
 		cpu.setReg(reg1, val)
 		cpu.IncPC(1)
 
 	case opcode == 0x76: // HALT
-		dbgpr("0x%04x: HALT", cpu.PC())
+		cpu.traceInst("HALT")
 		cpu.SetHalted(true)
 		cpu.IncPC(1)
 
@@ -932,28 +926,28 @@ func (cpu *CPU) Step() (uint, error) {
 		val := cpu.getReg(reg)
 		switch {
 		case 0x80 <= opcode && opcode <= 0x87: // ADD A, reg
-			dbgpr("0x%04x: ADD A, %s", cpu.PC(), reg2str(reg))
+			cpu.traceInst("ADD A, %s", reg2str(reg))
 			cpu.addA(val)
 		case 0x88 <= opcode && opcode <= 0x8f: // ADC A, reg
-			dbgpr("0x%04x: ADC A, %s", cpu.PC(), reg2str(reg))
+			cpu.traceInst("ADC A, %s", reg2str(reg))
 			cpu.adcA(val)
 		case 0x90 <= opcode && opcode <= 0x97: // SUB reg
-			dbgpr("0x%04x: SUB %s", cpu.PC(), reg2str(reg))
+			cpu.traceInst("SUB %s", reg2str(reg))
 			cpu.subA(val)
 		case 0x98 <= opcode && opcode <= 0x9f: // SBC A, reg
-			dbgpr("0x%04x: SBC A, %s", cpu.PC(), reg2str(reg))
+			cpu.traceInst("SBC A, %s", reg2str(reg))
 			cpu.sbcA(val)
 		case 0xa0 <= opcode && opcode <= 0xa7: // AND reg
-			dbgpr("0x%04x: AND %s", cpu.PC(), reg2str(reg))
+			cpu.traceInst("AND %s", reg2str(reg))
 			cpu.andA(val)
 		case 0xa8 <= opcode && opcode <= 0xaf: // XOR reg
-			dbgpr("0x%04x: XOR %s", cpu.PC(), reg2str(reg))
+			cpu.traceInst("XOR %s", reg2str(reg))
 			cpu.xorA(val)
 		case 0xb0 <= opcode && opcode <= 0xb7: // OR reg
-			dbgpr("0x%04x: OR %s", cpu.PC(), reg2str(reg))
+			cpu.traceInst("OR %s", reg2str(reg))
 			cpu.orA(val)
 		case 0xb8 <= opcode && opcode <= 0xbf: // CP reg
-			dbgpr("0x%04x: CP %s", cpu.PC(), reg2str(reg))
+			cpu.traceInst("CP %s", reg2str(reg))
 			cpu.cpA(val)
 		}
 		cpu.IncPC(1)
@@ -964,7 +958,7 @@ func (cpu *CPU) Step() (uint, error) {
 		if opLow%8 == 0 {
 			strIdx = (opcode - 0xc0) / 8
 		}
-		dbgpr("0x%04x: RET %s", cpu.PC(), cc2str(strIdx, false))
+		cpu.traceInst("RET %s", cc2str(strIdx, false))
 		if opcode == 0xc9 ||
 			(opcode == 0xc0 && !cpu.FlagZ()) || (opcode == 0xc8 && cpu.FlagZ()) ||
 			(opcode == 0xd0 && !cpu.FlagC()) || (opcode == 0xd8 && cpu.FlagC()) {
@@ -976,7 +970,7 @@ func (cpu *CPU) Step() (uint, error) {
 
 	case opLow == 1 && (0xc <= opHigh && opHigh <= 0xf): // POP
 		index := opHigh - 0xc
-		dbgpr("0x%04x: POP %s", cpu.PC(), regBC_DE_HL_AF_ToStr(index))
+		cpu.traceInst("POP %s", regBC_DE_HL_AF_ToStr(index))
 		cpu.setReg16(index, cpu.pop16(), false)
 		cpu.IncPC(1)
 
@@ -986,7 +980,7 @@ func (cpu *CPU) Step() (uint, error) {
 		if opLow%8 == 2 {
 			strIdx = (opcode - 0xc2) / 8
 		}
-		dbgpr("0x%04x: JP %s0x%x", cpu.PC(), cc2str(strIdx, true), imm16)
+		cpu.traceInst("JP %s0x%x", cc2str(strIdx, true), imm16)
 		if opcode == 0xc3 ||
 			(opcode == 0xc2 && !cpu.FlagZ()) || (opcode == 0xca && cpu.FlagZ()) ||
 			(opcode == 0xd2 && !cpu.FlagC()) || (opcode == 0xda && cpu.FlagC()) {
@@ -1002,7 +996,7 @@ func (cpu *CPU) Step() (uint, error) {
 		if opLow%8 == 4 {
 			strIdx = (opcode - 0xc4) / 8
 		}
-		dbgpr("0x%04x: CALL %s0x%x", cpu.PC(), cc2str(strIdx, true), imm16)
+		cpu.traceInst("CALL %s0x%x", cc2str(strIdx, true), imm16)
 		cpu.IncPC(3)
 		if opcode == 0xcd ||
 			(opcode == 0xc4 && !cpu.FlagZ()) || (opcode == 0xcc && cpu.FlagZ()) ||
@@ -1013,62 +1007,62 @@ func (cpu *CPU) Step() (uint, error) {
 
 	case opLow == 5 && (0xc <= opHigh && opHigh <= 0xf):
 		index := opHigh - 0xc
-		dbgpr("0x%04x: PUSH %s", cpu.PC(), regBC_DE_HL_AF_ToStr(index))
+		cpu.traceInst("PUSH %s", regBC_DE_HL_AF_ToStr(index))
 		cpu.push16(cpu.getReg16(index, false))
 		cpu.IncPC(1)
 
 	case opLow%8 == 6 && (0xc <= opHigh && opHigh <= 0xf):
 		switch opcode {
 		case 0xc6: // ADD A, d8
-			dbgpr("0x%04x: ADD A, 0x%x", cpu.PC(), imm8)
+			cpu.traceInst("ADD A, 0x%x", imm8)
 			cpu.addA(imm8)
 		case 0xce: // ADC A, d8
-			dbgpr("0x%04x: ADC A, 0x%x", cpu.PC(), imm8)
+			cpu.traceInst("ADC A, 0x%x", imm8)
 			cpu.adcA(imm8)
 		case 0xd6: // SUB d8
-			dbgpr("0x%04x: SUB 0x%x", cpu.PC(), imm8)
+			cpu.traceInst("SUB 0x%x", imm8)
 			cpu.subA(imm8)
 		case 0xde: // SBC d8
-			dbgpr("0x%04x: SBC 0x%x", cpu.PC(), imm8)
+			cpu.traceInst("SBC 0x%x", imm8)
 			cpu.sbcA(imm8)
 		case 0xe6: // AND d8
-			dbgpr("0x%04x: AND 0x%x", cpu.PC(), imm8)
+			cpu.traceInst("AND 0x%x", imm8)
 			cpu.andA(imm8)
 		case 0xee: // XOR d8
-			dbgpr("0x%04x: XOR 0x%x", cpu.PC(), imm8)
+			cpu.traceInst("XOR 0x%x", imm8)
 			cpu.xorA(imm8)
 		case 0xf6: // OR d8
-			dbgpr("0x%04x: OR 0x%x", cpu.PC(), imm8)
+			cpu.traceInst("OR 0x%x", imm8)
 			cpu.orA(imm8)
 		case 0xfe: // CP d8
-			dbgpr("0x%04x: CP 0x%x", cpu.PC(), imm8)
+			cpu.traceInst("CP 0x%x", imm8)
 			cpu.cpA(imm8)
 		}
 		cpu.IncPC(2)
 
 	case opLow%8 == 7 && (0xc <= opHigh && opHigh <= 0xf):
 		index := opcode - 0xc7
-		dbgpr("0x%04x: RST %02xH", cpu.PC(), index)
+		cpu.traceInst("RST %02xH", index)
 		cpu.IncPC(1)
 		cpu.call(uint16(index))
 
 	case opcode == 0xcb: // PREFIX CB
-		dbgpr("0x%04x: PREFIX CB", cpu.PC())
+		cpu.traceInst("PREFIX CB")
 		cpu.IncPC(1)
 		cpu.stepCB()
 
 	case opcode == 0xd9: // RETI
-		dbgpr("0x%04x: RETI", cpu.PC())
+		cpu.traceInst("RETI")
 		cpu.ret()
 		cpu.SetIME(true)
 
 	case opcode == 0xe0 || opcode == 0xf0:
 		if opcode == 0xe0 {
-			dbgpr("0x%04x: LDH (0x%x), A", cpu.PC(), imm8)
+			cpu.traceInst("LDH (0x%x), A", imm8)
 			addr := 0xff00 + uint16(imm8)
 			mmu.Set8(addr, cpu.A())
 		} else {
-			dbgpr("0x%04x: LDH A, (0x%x)", cpu.PC(), imm8)
+			cpu.traceInst("LDH A, (0x%x)", imm8)
 			addr := 0xff00 + uint16(imm8)
 			cpu.SetA(mmu.Get8(addr))
 		}
@@ -1077,63 +1071,59 @@ func (cpu *CPU) Step() (uint, error) {
 	case opcode == 0xe2 || opcode == 0xf2:
 		addr := 0xff00 | uint16(cpu.C())
 		if opcode == 0xe2 {
-			dbgpr("0x%04x: LD (C), A", cpu.PC())
+			cpu.traceInst("LD (C), A")
 			mmu.Set8(addr, cpu.A())
 		} else {
-			dbgpr("0x%04x: LD A, (C)", cpu.PC())
+			cpu.traceInst("LD A, (C)")
 			cpu.SetA(mmu.Get8(addr))
 		}
 		cpu.IncPC(1)
 
 	case opcode == 0xe8: // ADD SP, r8
-		dbgpr("0x%04x: ADD SP, 0x%x", cpu.PC(), imm8)
+		cpu.traceInst("ADD SP, 0x%x", imm8)
 		res := cpu.addSP8(imm8)
 		cpu.SetSP(res)
 		cpu.IncPC(2)
 
 	case opcode == 0xe9: // JP (HL)
-		dbgpr("0x%04x: JP (HL)", cpu.PC())
+		cpu.traceInst("JP (HL)")
 		addr := cpu.HL()
 		cpu.SetPC(addr)
 
 	case opcode == 0xea || opcode == 0xfa:
 		if opcode == 0xea {
-			dbgpr("0x%04x: LD (0x%x), A", cpu.PC(), imm16)
+			cpu.traceInst("LD (0x%x), A", imm16)
 			mmu.Set8(imm16, cpu.A())
 		} else {
-			dbgpr("0x%04x: LD A, (0x%x)", cpu.PC(), imm16)
+			cpu.traceInst("LD A, (0x%x)", imm16)
 			cpu.SetA(mmu.Get8(imm16))
 		}
 		cpu.IncPC(3)
 
 	case opcode == 0xf3 || opcode == 0xfb:
 		if opcode == 0xf3 {
-			dbgpr("0x%04x: DI", cpu.PC())
+			cpu.traceInst("DI")
 			cpu.SetIME(false) // FIXME: Correct? Probably it should be delayed.
 		} else {
-			dbgpr("0x%04x: EI", cpu.PC())
+			cpu.traceInst("EI")
 			cpu.SetIME(true) // FIXME: Correct? Probably it should be delayed.
 		}
 		cpu.IncPC(1)
 
 	case opcode == 0xf8: // LD HL, SP+r8
-		dbgpr("0x%04x: LD HL, SP+0x%x", cpu.PC(), imm8)
+		cpu.traceInst("LD HL, SP+0x%x", imm8)
 		res := cpu.addSP8(imm8)
 		cpu.SetHL(res)
 		cpu.IncPC(2)
 
 	case opcode == 0xf9: // LD SP, HL
-		dbgpr("0x%04x: LD SP, HL", cpu.PC())
+		cpu.traceInst("LD SP, HL")
 		cpu.SetSP(cpu.HL())
 		cpu.IncPC(1)
 
 	default:
 		return 0, fmt.Errorf("Illegal instr: 0x%02x at 0x%04x\n", mmu.Get8(cpu.PC()), cpu.PC())
 	}
-
-	dbgpr("                af=%04x    bc=%04x    de=%04x    hl=%04x", cpu.AF(), cpu.BC(), cpu.DE(), cpu.HL())
-	dbgpr("                sp=%04x    pc=%04x    Z=%d  N=%d  H=%d  C=%d", cpu.SP(), cpu.PC(), b2u8(cpu.FlagZ()), b2u8(cpu.FlagN()), b2u8(cpu.FlagH()), b2u8(cpu.FlagC()))
-	dbgpr("                ime=%d      tima=%02x", b2u8(cpu.ime), cpu.bus.Timer.TIMA())
 
 	tick := getOpTick(opcode, imm8, taken)
 

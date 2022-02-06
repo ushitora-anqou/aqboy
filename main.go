@@ -14,6 +14,7 @@ import (
 	"github.com/ushitora-anqou/aqboy/mmu"
 	"github.com/ushitora-anqou/aqboy/ppu"
 	"github.com/ushitora-anqou/aqboy/timer"
+	"github.com/ushitora-anqou/aqboy/util"
 )
 
 func buildUsageError() error {
@@ -172,7 +173,9 @@ func run() error {
 	//	addru16 := uint16(addr)
 	//	breakpointAddr = &addru16
 	//}
-	cpu.TRACE_INSTR = os.Getenv("AQBOY_TRACE") == "1"
+	if os.Getenv("AQBOY_TRACE") == "1" {
+		util.EnableTrace()
+	}
 
 	// Build the components
 	bus := bus.NewBus()
@@ -216,6 +219,10 @@ func run() error {
 			ppu.Update(tick)
 			timer.Update(tick)
 			cnt += int(tick)
+
+			util.Trace("                af=%04x    bc=%04x    de=%04x    hl=%04x", cpu.AF(), cpu.BC(), cpu.DE(), cpu.HL())
+			util.Trace("                sp=%04x    pc=%04x    Z=%d  N=%d  H=%d  C=%d", cpu.SP(), cpu.PC(), util.BoolToU8(cpu.FlagZ()), util.BoolToU8(cpu.FlagN()), util.BoolToU8(cpu.FlagH()), util.BoolToU8(cpu.FlagC()))
+			//util.Trace("                ime=%d      tima=%02x", util.b2u8(cpu.IME()), cpu.bus.Timer.TIMA())
 		}
 
 		// Draw

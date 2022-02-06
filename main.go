@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -162,27 +161,21 @@ func (wind *SDLWindow) Update() (bool, error) {
 }
 
 type TimeSynchronizer struct {
-	prevTime      time.Time
-	cnt, interval uint
+	prevTime   time.Time
+	usPerFrame int
 }
 
-func NewTimeSynchronizer(interval uint) *TimeSynchronizer {
+func NewTimeSynchronizer(targetFPS int) *TimeSynchronizer {
 	return &TimeSynchronizer{
-		prevTime: time.Now(),
-		cnt:      0,
-		interval: interval,
+		prevTime:   time.Now(),
+		usPerFrame: 1000000 / targetFPS,
 	}
 }
 
-func (ts *TimeSynchronizer) maySleep(tick uint) {
-	ts.cnt += tick
-	if ts.cnt < ts.interval {
-		return
-	}
-	ts.cnt -= ts.interval
+func (ts *TimeSynchronizer) maySleep() {
 	curTime := time.Now()
 	dur := curTime.Sub(ts.prevTime)
-	diff := (1000000 * int(ts.interval) / (4 * 1024 * 1024)) - int(dur.Microseconds())
+	diff := ts.usPerFrame - int(dur.Microseconds())
 	if diff > 0 {
 		time.Sleep(time.Duration(diff) * time.Microsecond)
 	}
@@ -196,18 +189,18 @@ func run() error {
 		return buildUsageError()
 	}
 	romPath := flag.Arg(0)
-	var breakpointAddr *uint16 = nil
-	if flag.NArg() >= 2 {
-		addr, err := strconv.ParseUint(flag.Arg(1), 0, 16)
-		if err != nil {
-			return err
-		}
-		addru16 := uint16(addr)
-		breakpointAddr = &addru16
-	}
+	//var breakpointAddr *uint16 = nil
+	//if flag.NArg() >= 2 {
+	//	addr, err := strconv.ParseUint(flag.Arg(1), 0, 16)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	addru16 := uint16(addr)
+	//	breakpointAddr = &addru16
+	//}
 	cpu.TRACE_INSTR = os.Getenv("AQBOY_TRACE") == "1"
 
-	// Build a new CPU, MMU, and PPU
+	// Build the components
 	bus := bus.NewBus()
 	cpu := cpu.NewCPU(bus)
 	ppu := ppu.NewPPU(bus)
@@ -231,57 +224,33 @@ func run() error {
 	// Build up the bus
 	bus.Register(cpu, mmu, ppu, wind, timer)
 
-	// Prepare shared variables
-	running := NewAtomicBool(true)
-	wg := &sync.WaitGroup{}
+	// Main loop
+	synchronizer := NewTimeSynchronizer(60 /* FPS */)
+	for {
+		// FIXME: Input
 
-	// Start computing
-	var errCPU error = nil
-	wg.Add(1)
-	go func() {
-		synchronizer := NewTimeSynchronizer(16 * 1024 /* interval */)
-		for running.Get() {
-			if breakpointAddr != nil && *breakpointAddr == cpu.PC() {
-				log.Printf("Break at 0x%04x.", cpu.PC())
-				break
-			}
-
-			var tick uint
-			tick, errCPU = cpu.Step()
-			if errCPU != nil {
-				break
+		// Compute
+		for cnt := 0; cnt < 145*(144+10); { // Emulate one frame
+			tick, err := cpu.Step()
+			if err != nil {
+				return err
 			}
 			ppu.Update(tick)
 			timer.Update(tick)
-
-			// Synchronize by sleeping
-			synchronizer.maySleep(tick)
+			cnt += int(tick)
 		}
-		running.Set(false)
-		wg.Done()
-	}()
 
-	// Start Drawing
-	var errDraw error = nil
-	// NOTE: When we call the functions of SDL from a different thread (goroutine),
-	// it doesn't function properly. I don't know why.
-	for running.Get() {
-		var res bool
-		res, errDraw = wind.Update()
+		// Draw
+		res, err := wind.Update()
+		if err != nil {
+			return err
+		}
 		if !res {
-			running.Set(false)
+			break
 		}
-		sdl.Delay(32)
+		synchronizer.maySleep()
 	}
-
-	// Wait goroutines for computing
-	wg.Wait()
-
-	if errCPU != nil {
-		return errCPU
-	} else {
-		return errDraw
-	}
+	return nil
 }
 
 func main() {

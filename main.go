@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/veandco/go-sdl2/sdl"
@@ -22,37 +20,12 @@ func buildUsageError() error {
 	return fmt.Errorf("Usage: %s PATH [BREAKPOINT-ADDR]", os.Args[0])
 }
 
-type AtomicBool struct {
-	flag uint32
-}
-
-func NewAtomicBool(initVal bool) *AtomicBool {
-	if initVal {
-		return &AtomicBool{flag: 1}
-	} else {
-		return &AtomicBool{flag: 0}
-	}
-}
-
-func (b *AtomicBool) Get() bool {
-	return atomic.LoadUint32(&b.flag) != 0
-}
-
-func (b *AtomicBool) Set(newVal bool) {
-	if newVal {
-		atomic.StoreUint32(&b.flag, 1)
-	} else {
-		atomic.StoreUint32(&b.flag, 0)
-	}
-}
-
 type SDLWindow struct {
 	window        *sdl.Window
 	renderer      *sdl.Renderer
 	texture       *sdl.Texture
 	width, height int32
 	srcPic        [ppu.LCD_WIDTH * ppu.LCD_HEIGHT]uint8
-	mtxSrcPic     sync.Mutex
 }
 
 func NewSDLWindow() (*SDLWindow, error) {
@@ -91,7 +64,6 @@ func NewSDLWindow() (*SDLWindow, error) {
 		width,
 		height,
 		[ppu.LCD_WIDTH * ppu.LCD_HEIGHT]uint8{},
-		sync.Mutex{},
 	}, nil
 }
 
@@ -103,32 +75,35 @@ func (wind *SDLWindow) DrawLine(ly int, scanline []uint8) error {
 			len(scanline),
 		)
 	}
-	wind.mtxSrcPic.Lock()
 	copy(wind.srcPic[ly*ppu.LCD_WIDTH:(ly+1)*ppu.LCD_WIDTH], scanline)
-	wind.mtxSrcPic.Unlock()
 	return nil
 }
 
-func (wind *SDLWindow) Update() (bool, error) {
-	// Handle inputs
+type WindowEvent struct {
+	Escape bool
+}
+
+func (wind *SDLWindow) HandleEvents() *WindowEvent {
 	for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 		switch event.(type) {
 		case *sdl.QuitEvent:
-			return false, nil
+			return &WindowEvent{Escape: true}
 		case *sdl.KeyboardEvent:
 			switch event.(*sdl.KeyboardEvent).Keysym.Sym {
 			case sdl.K_ESCAPE:
-				return false, nil
+				return &WindowEvent{Escape: true}
 			}
 		}
 	}
+	return &WindowEvent{}
+}
 
+func (wind *SDLWindow) UpdateScreen() error {
 	// Update the texture
 	pixels, _, err := wind.texture.Lock(nil)
 	if err != nil {
-		return false, err
+		return err
 	}
-	wind.mtxSrcPic.Lock()
 	for row := 0; row < ppu.LCD_HEIGHT; row++ {
 		for col := 0; col < ppu.LCD_WIDTH; col++ {
 			off := row*ppu.LCD_WIDTH + col
@@ -149,7 +124,6 @@ func (wind *SDLWindow) Update() (bool, error) {
 			pixels[off*4+3] = 0xff  // a
 		}
 	}
-	wind.mtxSrcPic.Unlock()
 	wind.texture.Unlock()
 
 	// Present the scene
@@ -157,7 +131,7 @@ func (wind *SDLWindow) Update() (bool, error) {
 	wind.renderer.Copy(wind.texture, nil, nil)
 	wind.renderer.Present()
 
-	return true, nil
+	return nil
 }
 
 type TimeSynchronizer struct {
@@ -227,7 +201,11 @@ func run() error {
 	// Main loop
 	synchronizer := NewTimeSynchronizer(60 /* FPS */)
 	for {
-		// FIXME: Input
+		// Handle inputs/events
+		event := wind.HandleEvents()
+		if event.Escape {
+			break
+		}
 
 		// Compute
 		for cnt := 0; cnt < 145*(144+10); { // Emulate one frame
@@ -241,12 +219,9 @@ func run() error {
 		}
 
 		// Draw
-		res, err := wind.Update()
+		err := wind.UpdateScreen()
 		if err != nil {
 			return err
-		}
-		if !res {
-			break
 		}
 		synchronizer.maySleep()
 	}

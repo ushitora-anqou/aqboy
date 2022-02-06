@@ -84,9 +84,13 @@ type PPU interface {
 	BGP() uint8
 
 	SetLCDC(lcdc uint8)
+	SetSTAT(stat uint8)
 	SetSCX(scx uint8)
 	SetSCY(scy uint8)
 	SetBGP(bgp uint8)
+	SetWX(wx uint8)
+	SetWY(wy uint8)
+	SetLYC(lyc uint8)
 }
 
 type LCD interface {

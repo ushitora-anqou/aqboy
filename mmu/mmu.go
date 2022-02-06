@@ -109,6 +109,7 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 		ppu.SetLCDC(val)
 	case 0xff41:
 		dbgpr("\t<<<WRITE: STAT LCDC Status: %08b>>>", val)
+		ppu.SetSTAT(val)
 	case 0xff42:
 		dbgpr("\t<<<WRITE: SCY Scroll Y: 0x%02x>>>", val)
 		ppu.SetSCY(val)
@@ -117,6 +118,7 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 		ppu.SetSCX(val)
 	case 0xff45:
 		dbgpr("\t<<<WRITE: LYC LY Compare: 0x%02x>>>", val)
+		ppu.SetLYC(val)
 	case 0xff47:
 		dbgpr("\t<<<WRITE: BGP BG Palette Data Non CGB Mode Only: %08b>>>", val)
 		ppu.SetBGP(val)
@@ -126,8 +128,10 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 		dbgpr("\t<<<WRITE: OBP1 Object Palette 1 Data Non CGB Mode Only %08b>>>", val)
 	case 0xff4a:
 		dbgpr("\t<<<WRITE: WY Window Y Position: 0x%02x>>>", val)
+		mmu.bus.PPU.SetWY(val)
 	case 0xff4b:
 		dbgpr("\t<<<WRITE: WX Window X Position: 0x%02x>>>", val)
+		mmu.bus.PPU.SetWX(val)
 	case 0xff4d:
 		dbgpr("\t<<<WRITE: KEY1 CGB Mode Only Prepare Speed Switch>>>")
 	case 0xff4f:

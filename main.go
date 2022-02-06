@@ -129,6 +129,7 @@ func (wind *SDLWindow) Update() (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	wind.mtxSrcPic.Lock()
 	for row := 0; row < ppu.LCD_HEIGHT; row++ {
 		for col := 0; col < ppu.LCD_WIDTH; col++ {
 			off := row*ppu.LCD_WIDTH + col
@@ -149,6 +150,7 @@ func (wind *SDLWindow) Update() (bool, error) {
 			pixels[off*4+3] = 0xff  // a
 		}
 	}
+	wind.mtxSrcPic.Unlock()
 	wind.texture.Unlock()
 
 	// Present the scene

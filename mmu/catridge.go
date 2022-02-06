@@ -15,10 +15,17 @@ func NewCatridge(filePath string) (*Catridge, error) {
 		return nil, err
 	}
 
-	// assert Catridge Type == MBC1
-	if src[0x147] != 0x01 {
-		return nil, fmt.Errorf("Unsupported Catridge Type: %d", src[0x147])
+	// Catridge Type
+	catType := src[0x147]
+	switch catType {
+	case 0x00: // ROM ONLY
+		// Do nothing
+	case 0x01: // MBC1
+		// Do nothing
+	default:
+		return nil, fmt.Errorf("Unsupported Catridge Type: %d", catType)
 	}
+
 	// assert ROM Size == 32KByte
 	if src[0x148] != 0x00 {
 		return nil, fmt.Errorf("Unsupported ROM Size: %d", src[0x148])

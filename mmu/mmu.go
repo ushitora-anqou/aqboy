@@ -31,6 +31,7 @@ type MMU struct {
 	bus        *bus.Bus
 	cat        *Catridge
 	wram, hram []uint8
+	oam        [0x00a0]uint8
 }
 
 func NewMMU(bus *bus.Bus, catridgeFilePath string) (*MMU, error) {
@@ -62,6 +63,11 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 	case 0xe000 <= addr && addr <= 0xfdff:
 		mmu.wram[addr-0xe000] = val
 		return
+	case 0xfe00 <= addr && addr <= 0xfe9f:
+		mmu.oam[addr-0xfe00] = val
+		return
+	case 0xfea0 <= addr && addr <= 0xfeff:
+		log.Fatalf("Invalid memory access of Get8: at 0x%08x", addr)
 	case 0xff80 <= addr && addr <= 0xfffe:
 		mmu.hram[addr-0xff80] = val
 		return
@@ -99,17 +105,29 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 		soundOnFlag := val & 15
 		dbgpr("\t<<<WRITE: NR52 Sound on/off: %v %08b>>>", allSoundOnOff, soundOnFlag)
 	case 0xff40:
-		dbgpr("\t<<<WRITE: LCDC - LCD Control: %08b>>>", val)
+		dbgpr("\t<<<WRITE: LCDC LCD Control: %08b>>>", val)
 		ppu.SetLCDC(val)
+	case 0xff41:
+		dbgpr("\t<<<WRITE: STAT LCDC Status: %08b>>>", val)
 	case 0xff42:
-		dbgpr("\t<<<WRITE: SCY Scroll Y: %03x>>>", val)
+		dbgpr("\t<<<WRITE: SCY Scroll Y: 0x%02x>>>", val)
 		ppu.SetSCY(val)
 	case 0xff43:
-		dbgpr("\t<<<WRITE: SCX Scroll X: %03x>>>", val)
+		dbgpr("\t<<<WRITE: SCX Scroll X: 0x%02x>>>", val)
 		ppu.SetSCX(val)
+	case 0xff45:
+		dbgpr("\t<<<WRITE: LYC LY Compare: 0x%02x>>>", val)
 	case 0xff47:
 		dbgpr("\t<<<WRITE: BGP BG Palette Data Non CGB Mode Only: %08b>>>", val)
 		ppu.SetBGP(val)
+	case 0xff48:
+		dbgpr("\t<<<WRITE: OBP0 Object Palette 0 Data Non CGB Mode Only %08b>>>", val)
+	case 0xff49:
+		dbgpr("\t<<<WRITE: OBP1 Object Palette 1 Data Non CGB Mode Only %08b>>>", val)
+	case 0xff4a:
+		dbgpr("\t<<<WRITE: WY Window Y Position: 0x%02x>>>", val)
+	case 0xff4b:
+		dbgpr("\t<<<WRITE: WX Window X Position: 0x%02x>>>", val)
 	case 0xff4d:
 		dbgpr("\t<<<WRITE: KEY1 CGB Mode Only Prepare Speed Switch>>>")
 	case 0xff4f:
@@ -142,6 +160,10 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 		return mmu.wram[addr-0xc000]
 	case 0xe000 <= addr && addr <= 0xfdff:
 		return mmu.wram[addr-0xe000]
+	case 0xfe00 <= addr && addr <= 0xfe9f:
+		return mmu.oam[addr-0xfe00]
+	case 0xfea0 <= addr && addr <= 0xfeff:
+		log.Fatalf("Invalid memory access of Get8: at 0x%08x", addr)
 	case 0xff80 <= addr && addr <= 0xfffe:
 		return mmu.hram[addr-0xff80]
 	}

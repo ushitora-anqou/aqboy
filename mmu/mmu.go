@@ -124,8 +124,10 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 		ppu.SetBGP(val)
 	case 0xff48:
 		dbgpr("\t<<<WRITE: OBP0 Object Palette 0 Data Non CGB Mode Only %08b>>>", val)
+		ppu.SetOBP0(val)
 	case 0xff49:
 		dbgpr("\t<<<WRITE: OBP1 Object Palette 1 Data Non CGB Mode Only %08b>>>", val)
+		ppu.SetOBP1(val)
 	case 0xff4a:
 		dbgpr("\t<<<WRITE: WY Window Y Position: 0x%02x>>>", val)
 		mmu.bus.PPU.SetWY(val)

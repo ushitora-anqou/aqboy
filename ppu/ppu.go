@@ -1,6 +1,8 @@
 package ppu
 
 import (
+	"sort"
+
 	"github.com/ushitora-anqou/aqboy/bus"
 )
 
@@ -10,10 +12,10 @@ const BG_PX_WIDTH = 256
 const BG_PX_HEIGHT = 256
 
 type PPU struct {
-	bus                                             *bus.Bus
-	vram                                            [0x2000]uint8
-	scx, scy, bgp, lcdc, ly, lyc, wx, wy, wly, stat uint8
-	tick                                            uint
+	bus                                                         *bus.Bus
+	vram                                                        [0x2000]uint8
+	scx, scy, bgp, obp0, obp1, lcdc, ly, lyc, wx, wy, wly, stat uint8
+	tick                                                        uint
 }
 
 func NewPPU(bus *bus.Bus) *PPU {
@@ -76,6 +78,22 @@ func (ppu *PPU) SetBGP(bgp uint8) {
 	ppu.bgp = bgp
 }
 
+func (ppu *PPU) OBP0() uint8 {
+	return ppu.obp0
+}
+
+func (ppu *PPU) SetOBP0(obp0 uint8) {
+	ppu.obp0 = obp0
+}
+
+func (ppu *PPU) OBP1() uint8 {
+	return ppu.obp1
+}
+
+func (ppu *PPU) SetOBP1(obp1 uint8) {
+	ppu.obp1 = obp1
+}
+
 func (ppu *PPU) WY() uint8 {
 	return ppu.wy
 }
@@ -136,8 +154,12 @@ func (ppu *PPU) getBGTileMapAddr() uint16 {
 	}
 }
 
-func (ppu *PPU) getOBJSize() bool {
-	return (ppu.LCDC()>>2)&1 != 0
+func (ppu *PPU) getOBJYSize() uint8 {
+	if (ppu.LCDC()>>2)&1 == 0 {
+		return 8
+	} else {
+		return 16
+	}
 }
 
 func (ppu *PPU) getOBJDisplayEnable() bool {
@@ -148,9 +170,8 @@ func (ppu *PPU) getBGWindowDisplayPriority() bool {
 	return (ppu.LCDC()>>0)&1 != 0
 }
 
-func (ppu *PPU) fetchTileColor(isBG bool, x, y int) uint8 {
+func (ppu *PPU) fetchTileIndex(isBG bool, x, y int) uint8 {
 	tile_x, tile_y := x/8, y/8
-	pix_x, pix_y := x%8, y%8
 
 	var tileMapAddr uint16
 	if isBG {
@@ -158,27 +179,43 @@ func (ppu *PPU) fetchTileColor(isBG bool, x, y int) uint8 {
 	} else {
 		tileMapAddr = ppu.getWindowTileMapAddr()
 	}
-	tileNo := ppu.Get8(uint16(int(tileMapAddr) + 32*tile_y + tile_x))
 
+	tileNo := ppu.Get8(uint16(int(tileMapAddr) + 32*tile_y + tile_x))
+	return tileNo
+}
+
+func (ppu *PPU) fetchTileColor(isObject bool, tileNo, paletteData uint8, pixX, pixY int) uint8 {
 	var off uint16
-	if ppu.getBGWindowTileDataArea() {
-		off = uint16(0x8000 + int(tileNo)*16 + 2*pix_y)
-	} else {
-		off = uint16(0x9000 + int(int8(tileNo))*16 + 2*pix_y)
+	switch {
+	case isObject:
+		if ppu.getOBJYSize() == 16 {
+			// Bit 0 of tile index for 8x16 objects should be ignored.
+			tileNo &^= 1 << 0
+		}
+		off = uint16(0x8000 + int(tileNo)*16 + 2*pixY)
+	case ppu.getBGWindowTileDataArea():
+		off = uint16(0x8000 + int(tileNo)*16 + 2*pixY)
+	default:
+		off = uint16(0x9000 + int(int8(tileNo))*16 + 2*pixY)
 	}
 
-	paletteIdxLSB := (ppu.Get8(off) >> (7 - pix_x)) & 1
-	paletteIdxMSB := (ppu.Get8(off+1) >> (7 - pix_x)) & 1
+	paletteIdxLSB := (ppu.Get8(off) >> (7 - pixX)) & 1
+	paletteIdxMSB := (ppu.Get8(off+1) >> (7 - pixX)) & 1
 	paletteIdx := paletteIdxLSB | (paletteIdxMSB << 1)
-	color := (ppu.BGP() >> (2 * paletteIdx)) & 3
+	color := (paletteData >> (2 * paletteIdx)) & 3
 	return color
+}
+
+func (ppu *PPU) fetchBGWindowTileColor(isBG bool, x, y int) uint8 {
+	tileNo := ppu.fetchTileIndex(isBG, x, y)
+	return ppu.fetchTileColor(false, tileNo, ppu.BGP(), x%8, y%8)
 }
 
 func (ppu *PPU) drawLineBG(scanline []uint8) {
 	y := int(ppu.ly + ppu.scy) // NOTE: wrap around
 	for ax := 0; ax < LCD_WIDTH; ax++ {
 		x := int(uint8(ax) + ppu.scx) // NOTE: wrap around
-		scanline[ax] = ppu.fetchTileColor(true, x, y)
+		scanline[ax] = ppu.fetchBGWindowTileColor(true, x, y)
 	}
 }
 
@@ -191,7 +228,51 @@ func (ppu *PPU) drawLineWindow(scanline []uint8) {
 		if x < wx || y < wy {
 			continue
 		}
-		scanline[x] = ppu.fetchTileColor(false, x-wx, int(ppu.wly))
+		scanline[x] = ppu.fetchBGWindowTileColor(false, x-wx, int(ppu.wly))
+	}
+}
+
+func (ppu *PPU) drawLineObjects(scanline []uint8) {
+	objXSize := 8
+	objYSize := int(ppu.getOBJYSize())
+	ly := int(ppu.LY())
+
+	// Select objects to be drawn
+	objs := []*object{}
+	for i := 0; i < 40 && len(objs) < 10; i++ {
+		obj := newObject(ppu.bus.MMU, uint16(0xfe00+i*4))
+		if obj.screenY() <= ly && ly < obj.screenY()+objYSize {
+			objs = append(objs, obj)
+		}
+	}
+
+	// Sort the selected objects IN REVERSE
+	sort.Sort(sort.Reverse(byXAndOAMIndex(objs)))
+
+	// Render the objects in order
+	for _, obj := range objs {
+		for ax := 0; ax < objXSize; ax++ {
+			paletteData := ppu.OBP0()
+			if obj.paletteNumber() {
+				paletteData = ppu.OBP1()
+			}
+
+			oy := int(ly - obj.screenY())
+			if obj.yFlip() {
+				oy = (objYSize - 1) - oy
+			}
+			ox := ax
+			if obj.xFlip() {
+				ox = (objXSize - 1) - ox
+			}
+
+			color := ppu.fetchTileColor(true, obj.tileIndex, paletteData, ox, oy)
+
+			x := int(obj.screenX()) + ax
+			if x < LCD_WIDTH && color != 0 /* transparent */ {
+				scanline[x] = color
+			}
+		}
 	}
 }
 
@@ -204,6 +285,9 @@ func (ppu *PPU) drawLine() error {
 	if ppu.getBGWindowDisplayPriority() {
 		ppu.drawLineBG(scanline[:])
 		ppu.drawLineWindow(scanline[:])
+	}
+	if ppu.getOBJDisplayEnable() {
+		ppu.drawLineObjects(scanline[:])
 	}
 	ppu.bus.LCD.DrawLine(int(ppu.ly), scanline[:])
 	return nil

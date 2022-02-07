@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/veandco/go-sdl2/sdl"
@@ -164,15 +165,15 @@ func run() error {
 		return buildUsageError()
 	}
 	romPath := flag.Arg(0)
-	//var breakpointAddr *uint16 = nil
-	//if flag.NArg() >= 2 {
-	//	addr, err := strconv.ParseUint(flag.Arg(1), 0, 16)
-	//	if err != nil {
-	//		return err
-	//	}
-	//	addru16 := uint16(addr)
-	//	breakpointAddr = &addru16
-	//}
+	var breakpointAddr *uint16 = nil
+	if flag.NArg() >= 2 {
+		addr, err := strconv.ParseUint(flag.Arg(1), 0, 16)
+		if err != nil {
+			return err
+		}
+		addru16 := uint16(addr)
+		breakpointAddr = &addru16
+	}
 	if os.Getenv("AQBOY_TRACE") == "1" {
 		util.EnableTrace()
 	}
@@ -203,6 +204,7 @@ func run() error {
 
 	// Main loop
 	synchronizer := NewTimeSynchronizer(60 /* FPS */)
+LabelMainLoop:
 	for {
 		// Handle inputs/events
 		event := wind.HandleEvents()
@@ -223,6 +225,10 @@ func run() error {
 			util.Trace("                af=%04x    bc=%04x    de=%04x    hl=%04x", cpu.AF(), cpu.BC(), cpu.DE(), cpu.HL())
 			util.Trace("                sp=%04x    pc=%04x    Z=%d  N=%d  H=%d  C=%d", cpu.SP(), cpu.PC(), util.BoolToU8(cpu.FlagZ()), util.BoolToU8(cpu.FlagN()), util.BoolToU8(cpu.FlagH()), util.BoolToU8(cpu.FlagC()))
 			//util.Trace("                ime=%d      tima=%02x", util.b2u8(cpu.IME()), cpu.bus.Timer.TIMA())
+
+			if breakpointAddr != nil && cpu.PC() == *breakpointAddr {
+				break LabelMainLoop
+			}
 		}
 
 		// Draw

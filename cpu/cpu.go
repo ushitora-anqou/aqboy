@@ -87,59 +87,26 @@ func sub4(xu8, yu8 uint8, borrow bool) (uint8, bool) {
 	return diff, borrowOut
 }
 
-type InterruptBits struct {
-	vblank, lcd, timer, serial, joypad bool
-}
+type InterruptBits uint8
 
 func (ib *InterruptBits) getN(i int) bool {
-	switch i {
-	case 0:
-		return ib.vblank
-	case 1:
-		return ib.lcd
-	case 2:
-		return ib.timer
-	case 3:
-		return ib.serial
-	case 4:
-		return ib.joypad
-	default:
-		log.Fatalf("Invalid interrupt bit: %d", i)
-	}
-	return false
+	return ((*ib >> i) & 1) != 0
 }
 
 func (ib *InterruptBits) setN(i int, val bool) {
-	switch i {
-	case 0:
-		ib.vblank = val
-	case 1:
-		ib.lcd = val
-	case 2:
-		ib.timer = val
-	case 3:
-		ib.serial = val
-	case 4:
-		ib.joypad = val
-	default:
-		log.Fatalf("Invalid interrupt bit: %d", i)
+	if val {
+		*ib |= (1 << i)
+	} else {
+		*ib &^= (1 << i)
 	}
 }
 
 func (ib *InterruptBits) get() uint8 {
-	var ret uint8 = 0
-	for i := 0; i < 5; i++ {
-		if ib.getN(i) {
-			ret |= 1 << i
-		}
-	}
-	return ret
+	return uint8(*ib)
 }
 
 func (ib *InterruptBits) set(val uint8) {
-	for i := 0; i < 5; i++ {
-		ib.setN(i, ((val>>i)&1) != 0)
-	}
+	*ib = InterruptBits(val)
 }
 
 type CPU struct {

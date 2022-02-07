@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime/pprof"
 	"strconv"
 	"time"
 
@@ -176,6 +177,17 @@ func run() error {
 	}
 	if os.Getenv("AQBOY_TRACE") == "1" {
 		util.EnableTrace()
+	}
+	if filename := os.Getenv("AQBOY_CPUPROFILE"); filename != "" {
+		file, err := os.Create(filename)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		if err := pprof.StartCPUProfile(file); err != nil {
+			return err
+		}
+		defer pprof.StopCPUProfile()
 	}
 
 	// Build the components

@@ -12,6 +12,10 @@ func DisableTrace() {
 	flagEnableTrace = false
 }
 
+func IsTraceEnabled() bool {
+	return flagEnableTrace
+}
+
 func doTrace(format string, v ...interface{}) {
 	log.Printf(format, v...)
 }

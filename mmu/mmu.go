@@ -4,11 +4,8 @@ import (
 	"log"
 
 	"github.com/ushitora-anqou/aqboy/bus"
+	"github.com/ushitora-anqou/aqboy/util"
 )
-
-func dbgpr(format string, v ...interface{}) {
-	log.Printf(format, v...)
-}
 
 type MMU struct {
 	/*
@@ -75,75 +72,75 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 
 	switch addr {
 	case 0xff00:
-		dbgpr("\t<<<WRITE: P1/JOYP Joypad: %08b>>>", val)
+		util.Trace("\t<<<WRITE: P1/JOYP Joypad: %08b>>>", val)
 	case 0xff01:
-		dbgpr("\t<<<WRITE: SB Serial transfer data>>>")
+		util.Trace("\t<<<WRITE: SB Serial transfer data>>>")
 	case 0xff02:
-		dbgpr("\t<<<WRITE: SC Serial Transfer Control>>>")
+		util.Trace("\t<<<WRITE: SC Serial Transfer Control>>>")
 	case 0xff05:
-		dbgpr("\t<<<WRITE: TIMA Timer counter: %02x>>>", val)
+		util.Trace("\t<<<WRITE: TIMA Timer counter: %02x>>>", val)
 		timer.SetTIMA(val)
 	case 0xff06:
-		dbgpr("\t<<<WRITE: TMA Timer Modulo: %02x>>>", val)
+		util.Trace("\t<<<WRITE: TMA Timer Modulo: %02x>>>", val)
 		timer.SetTMA(val)
 	case 0xff07:
-		dbgpr("\t<<<WRITE: TAC Timer Control: %b>>>", val)
+		util.Trace("\t<<<WRITE: TAC Timer Control: %b>>>", val)
 		timer.SetTAC(val)
 	case 0xff0f:
-		dbgpr("\t<<<WRITE: IF Interrupt Flag: %b>>>", val)
+		util.Trace("\t<<<WRITE: IF Interrupt Flag: %b>>>", val)
 		cpu.SetIF(val)
 	case 0xff24:
 		outputVinToSO2 := (val >> 7) & 1
 		so2OutputLevel := (val >> 4) & 7
 		outputVinToSO1 := (val >> 3) & 1
 		so1OutputLevel := (val >> 0) & 7
-		dbgpr("\t<<<WRITE: NR50 Channel control / On-OFF / Volume: %v %v %v %v>>>", outputVinToSO2, so2OutputLevel, outputVinToSO1, so1OutputLevel)
+		util.Trace("\t<<<WRITE: NR50 Channel control / On-OFF / Volume: %v %v %v %v>>>", outputVinToSO2, so2OutputLevel, outputVinToSO1, so1OutputLevel)
 	case 0xff25:
-		dbgpr("\t<<<WRITE: NR51 Selection of Sound output terminal: %08b>>>", val)
+		util.Trace("\t<<<WRITE: NR51 Selection of Sound output terminal: %08b>>>", val)
 	case 0xff26:
 		allSoundOnOff := (val >> 7) & 1
 		soundOnFlag := val & 15
-		dbgpr("\t<<<WRITE: NR52 Sound on/off: %v %08b>>>", allSoundOnOff, soundOnFlag)
+		util.Trace("\t<<<WRITE: NR52 Sound on/off: %v %08b>>>", allSoundOnOff, soundOnFlag)
 	case 0xff40:
-		dbgpr("\t<<<WRITE: LCDC LCD Control: %08b>>>", val)
+		util.Trace("\t<<<WRITE: LCDC LCD Control: %08b>>>", val)
 		ppu.SetLCDC(val)
 	case 0xff41:
-		dbgpr("\t<<<WRITE: STAT LCDC Status: %08b>>>", val)
+		util.Trace("\t<<<WRITE: STAT LCDC Status: %08b>>>", val)
 		ppu.SetSTAT(val)
 	case 0xff42:
-		dbgpr("\t<<<WRITE: SCY Scroll Y: 0x%02x>>>", val)
+		util.Trace("\t<<<WRITE: SCY Scroll Y: 0x%02x>>>", val)
 		ppu.SetSCY(val)
 	case 0xff43:
-		dbgpr("\t<<<WRITE: SCX Scroll X: 0x%02x>>>", val)
+		util.Trace("\t<<<WRITE: SCX Scroll X: 0x%02x>>>", val)
 		ppu.SetSCX(val)
 	case 0xff45:
-		dbgpr("\t<<<WRITE: LYC LY Compare: 0x%02x>>>", val)
+		util.Trace("\t<<<WRITE: LYC LY Compare: 0x%02x>>>", val)
 		ppu.SetLYC(val)
 	case 0xff47:
-		dbgpr("\t<<<WRITE: BGP BG Palette Data Non CGB Mode Only: %08b>>>", val)
+		util.Trace("\t<<<WRITE: BGP BG Palette Data Non CGB Mode Only: %08b>>>", val)
 		ppu.SetBGP(val)
 	case 0xff48:
-		dbgpr("\t<<<WRITE: OBP0 Object Palette 0 Data Non CGB Mode Only %08b>>>", val)
+		util.Trace("\t<<<WRITE: OBP0 Object Palette 0 Data Non CGB Mode Only %08b>>>", val)
 		ppu.SetOBP0(val)
 	case 0xff49:
-		dbgpr("\t<<<WRITE: OBP1 Object Palette 1 Data Non CGB Mode Only %08b>>>", val)
+		util.Trace("\t<<<WRITE: OBP1 Object Palette 1 Data Non CGB Mode Only %08b>>>", val)
 		ppu.SetOBP1(val)
 	case 0xff4a:
-		dbgpr("\t<<<WRITE: WY Window Y Position: 0x%02x>>>", val)
+		util.Trace("\t<<<WRITE: WY Window Y Position: 0x%02x>>>", val)
 		mmu.bus.PPU.SetWY(val)
 	case 0xff4b:
-		dbgpr("\t<<<WRITE: WX Window X Position: 0x%02x>>>", val)
+		util.Trace("\t<<<WRITE: WX Window X Position: 0x%02x>>>", val)
 		mmu.bus.PPU.SetWX(val)
 	case 0xff4d:
-		dbgpr("\t<<<WRITE: KEY1 CGB Mode Only Prepare Speed Switch>>>")
+		util.Trace("\t<<<WRITE: KEY1 CGB Mode Only Prepare Speed Switch>>>")
 	case 0xff4f:
-		dbgpr("\t<<<WRITE: VBK CGB Mode Only VRAM Bank>>>")
+		util.Trace("\t<<<WRITE: VBK CGB Mode Only VRAM Bank>>>")
 	case 0xff68:
-		dbgpr("\t<<<WRITE: BCPS/BGPI CGB Mode Only Background Palette Index>>>")
+		util.Trace("\t<<<WRITE: BCPS/BGPI CGB Mode Only Background Palette Index>>>")
 	case 0xff69:
-		dbgpr("\t<<<WRITE: BCPD/BGPD CGB Mode Only Background Palette Data>>>")
+		util.Trace("\t<<<WRITE: BCPD/BGPD CGB Mode Only Background Palette Data>>>")
 	case 0xffff:
-		dbgpr("\t<<<WRITE: IE Interrupt Enable: %b>>>", val)
+		util.Trace("\t<<<WRITE: IE Interrupt Enable: %b>>>", val)
 		cpu.SetIE(val)
 	default:
 		log.Fatalf("Invalid memory access of Set8: 0x%02x at 0x%08x", val, addr)
@@ -176,38 +173,38 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 
 	switch addr {
 	case 0xff00:
-		dbgpr("\t<<<READ: P1/JOYP Joypad>>>")
+		util.Trace("\t<<<READ: P1/JOYP Joypad>>>")
 	case 0xff05:
-		dbgpr("\t<<<READ: TIMA Timer counter>>>")
+		util.Trace("\t<<<READ: TIMA Timer counter>>>")
 		return timer.TIMA()
 	case 0xff06:
-		dbgpr("\t<<<READ: TMA Timer Modulo>>>")
+		util.Trace("\t<<<READ: TMA Timer Modulo>>>")
 		return timer.TMA()
 	case 0xff07:
-		dbgpr("\t<<<READ: TAC Timer Control>>>")
+		util.Trace("\t<<<READ: TAC Timer Control>>>")
 		return timer.TAC()
 	case 0xff0f:
-		dbgpr("\t<<<READ: IF Interrupt Flag>>>")
+		util.Trace("\t<<<READ: IF Interrupt Flag>>>")
 		return cpu.IF()
 	case 0xffff:
-		dbgpr("\t<<<READ: IE Interrupt Enable>>>")
+		util.Trace("\t<<<READ: IE Interrupt Enable>>>")
 		return cpu.IE()
 	case 0xff24:
-		dbgpr("\t<<<READ: NR50 Channel control / On-OFF / Volume>>>")
+		util.Trace("\t<<<READ: NR50 Channel control / On-OFF / Volume>>>")
 	case 0xff25:
-		dbgpr("\t<<<READ: NR51 Selection of Sound output terminal>>>")
+		util.Trace("\t<<<READ: NR51 Selection of Sound output terminal>>>")
 	case 0xff26:
-		dbgpr("\t<<<READ: NR52 Sound on/off>>>")
+		util.Trace("\t<<<READ: NR52 Sound on/off>>>")
 	case 0xff40:
-		dbgpr("\t<<<READ: LCDC LCD Control>>>")
+		util.Trace("\t<<<READ: LCDC LCD Control>>>")
 		return ppu.LCDC()
 	case 0xff44:
-		dbgpr("\t<<<READ: LY - LCDC Y-Coordinate>>>")
+		util.Trace("\t<<<READ: LY - LCDC Y-Coordinate>>>")
 		return ppu.LY()
 	case 0xff4d:
-		dbgpr("\t<<<READ: KEY1 CGB Mode Only Prepare Speed Switch>>>")
+		util.Trace("\t<<<READ: KEY1 CGB Mode Only Prepare Speed Switch>>>")
 	case 0xff68:
-		dbgpr("\t<<<READ: BCPS/BGPI CGB Mode Only Background Palette Index>>>")
+		util.Trace("\t<<<READ: BCPS/BGPI CGB Mode Only Background Palette Index>>>")
 	default:
 		log.Fatalf("Invalid memory access of Get8: at 0x%08x", addr)
 	}

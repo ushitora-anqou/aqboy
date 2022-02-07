@@ -9,40 +9,11 @@ const LCD_HEIGHT = 144
 const BG_PX_WIDTH = 256
 const BG_PX_HEIGHT = 256
 
-type pixelsBuilder struct {
-	scx, scy int
-	pixels   [LCD_WIDTH * LCD_HEIGHT]uint8
-}
-
-func newPixelsBuilder(scx, scy int) *pixelsBuilder {
-	return &pixelsBuilder{
-		scx, scy, [LCD_WIDTH * LCD_HEIGHT]uint8{},
-	}
-}
-
-func (b *pixelsBuilder) getPixels() []uint8 {
-	return b.pixels[:]
-}
-
-func (b *pixelsBuilder) set(srcX, srcY int, pixel uint8) {
-	x := srcX - b.scx
-	y := srcY - b.scy
-	if x < 0 {
-		x += BG_PX_WIDTH
-	}
-	if y < 0 {
-		y += BG_PX_HEIGHT
-	}
-	if x < LCD_WIDTH && y < LCD_HEIGHT {
-		b.pixels[y*LCD_WIDTH+x] = pixel
-	}
-}
-
 type PPU struct {
-	bus                                        *bus.Bus
-	vram                                       [0x2000]uint8
-	scx, scy, bgp, lcdc, ly, lyc, wx, wy, stat uint8
-	tick                                       uint
+	bus                                             *bus.Bus
+	vram                                            [0x2000]uint8
+	scx, scy, bgp, lcdc, ly, lyc, wx, wy, wly, stat uint8
+	tick                                            uint
 }
 
 func NewPPU(bus *bus.Bus) *PPU {
@@ -153,12 +124,8 @@ func (ppu *PPU) getWindowDisplayEnable() bool {
 	return (ppu.LCDC()>>5)&1 != 0
 }
 
-func (ppu *PPU) getBGWindowTileAddr() uint16 {
-	if (ppu.LCDC()>>4)&1 == 0 {
-		return 0x8800
-	} else {
-		return 0x8000
-	}
+func (ppu *PPU) getBGWindowTileDataArea() bool {
+	return (ppu.LCDC()>>4)&1 != 0
 }
 
 func (ppu *PPU) getBGTileMapAddr() uint16 {
@@ -182,18 +149,23 @@ func (ppu *PPU) getBGWindowDisplayPriority() bool {
 }
 
 func (ppu *PPU) fetchTileColor(isBG bool, x, y int) uint8 {
-	var tileMapAddr, tileDataAddr uint16
+	tile_x, tile_y := x/8, y/8
+	pix_x, pix_y := x%8, y%8
+
+	var tileMapAddr uint16
 	if isBG {
 		tileMapAddr = ppu.getBGTileMapAddr()
 	} else {
 		tileMapAddr = ppu.getWindowTileMapAddr()
 	}
-	tileDataAddr = ppu.getBGWindowTileAddr()
-
-	tile_x, tile_y := x/8, y/8
-	pix_x, pix_y := x%8, y%8
 	tileNo := ppu.Get8(uint16(int(tileMapAddr) + 32*tile_y + tile_x))
-	off := uint16(int(tileDataAddr) + int(tileNo)*16 + 2*pix_y)
+
+	var off uint16
+	if ppu.getBGWindowTileDataArea() {
+		off = uint16(0x8000 + int(tileNo)*16 + 2*pix_y)
+	} else {
+		off = uint16(0x9000 + int(int8(tileNo))*16 + 2*pix_y)
+	}
 
 	paletteIdxLSB := (ppu.Get8(off) >> (7 - pix_x)) & 1
 	paletteIdxMSB := (ppu.Get8(off+1) >> (7 - pix_x)) & 1
@@ -214,13 +186,12 @@ func (ppu *PPU) drawLineWindow(scanline []uint8) {
 	if !ppu.getWindowDisplayEnable() {
 		return
 	}
-
 	y, wx, wy := int(ppu.LY()), int(ppu.WX()-7), int(ppu.WY())
 	for x := 0; x < LCD_WIDTH; x++ {
 		if x < wx || y < wy {
 			continue
 		}
-		scanline[x] = ppu.fetchTileColor(false, x-wx, y-wy)
+		scanline[x] = ppu.fetchTileColor(false, x-wx, int(ppu.wly))
 	}
 }
 
@@ -256,6 +227,14 @@ func (ppu *PPU) updateInterrupt() {
 	}
 }
 
+func (ppu *PPU) updateLYCLYCoincidence() {
+	if ppu.LY() == ppu.LYC() {
+		ppu.SetSTAT(ppu.STAT() | (1 << 2))
+	} else {
+		ppu.SetSTAT(ppu.STAT() &^ (1 << 2))
+	}
+}
+
 func (ppu *PPU) Update(elapsedTick uint) error {
 	ppu.tick += elapsedTick
 
@@ -270,6 +249,9 @@ func (ppu *PPU) Update(elapsedTick uint) error {
 		ppu.updateInterrupt()
 
 		ppu.drawLine()
+		if ppu.WX()-7 < LCD_WIDTH && ppu.WY() <= ppu.LY() {
+			ppu.wly += 1
+		}
 
 	case ppu.Mode() == 0 && ppu.tick >= 208: // H-Blank --> OAM Search | V-Blank
 		ppu.tick -= 208
@@ -279,17 +261,15 @@ func (ppu *PPU) Update(elapsedTick uint) error {
 		} else { // Go to OAM Search
 			ppu.SetMode(2)
 		}
-		if ppu.LY() == ppu.LYC() { // LYC=LY Coincidence
-			ppu.SetSTAT(ppu.STAT() | (1 << 2))
-		} else {
-			ppu.SetSTAT(ppu.STAT() &^ (1 << 2))
-		}
+		ppu.updateLYCLYCoincidence()
 		ppu.updateInterrupt()
 
 	case ppu.Mode() == 1 && ppu.tick >= 4560: // V-Blank --> OAM Search
 		ppu.tick -= 4560
 		ppu.ly = 0
+		ppu.wly = 0
 		ppu.SetMode(2)
+		ppu.updateLYCLYCoincidence()
 		ppu.updateInterrupt()
 	}
 

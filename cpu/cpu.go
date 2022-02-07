@@ -577,7 +577,7 @@ func (cpu *CPU) handleInterrupt() uint {
 			cpu.intFlag.setN(i, false)
 			cpu.SetIME(false)
 			cpu.SetHalted(false)
-			tick = 12
+			tick = 12 // FIXME: Correct?
 		}
 		break
 	}

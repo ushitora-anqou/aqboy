@@ -70,7 +70,7 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 		mmu.oam[addr-0xfe00] = val
 		return
 	case 0xfea0 <= addr && addr <= 0xfeff:
-		log.Fatalf("Invalid memory access of Get8: at 0x%08x", addr)
+		log.Fatalf("Invalid memory access of Set8: at 0x%08x", addr)
 	case 0xff80 <= addr && addr <= 0xfffe:
 		mmu.hram[addr-0xff80] = val
 		return

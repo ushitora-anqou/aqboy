@@ -26,13 +26,13 @@ type MMU struct {
 		FFFF-FFFF  Interrupts Enable Register (IE)
 	*/
 	bus        *bus.Bus
-	cat        *Catridge
+	cat        Cartridge
 	wram, hram []uint8
 	oam        [0x00a0]uint8
 }
 
 func NewMMU(bus *bus.Bus, catridgeFilePath string) (*MMU, error) {
-	cat, err := NewCatridge(catridgeFilePath)
+	cat, err := NewMBC1Cartridge(catridgeFilePath)
 	if err != nil {
 		return nil, err
 	}
@@ -51,8 +51,14 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 	timer := mmu.bus.Timer
 
 	switch {
+	case 0x0000 <= addr && addr <= 0x7fff:
+		mmu.cat.set8(addr, val)
+		return
 	case 0x8000 <= addr && addr <= 0x9FFF:
 		ppu.Set8(addr, val)
+		return
+	case 0xa000 <= addr && addr <= 0xbfff:
+		mmu.cat.set8(addr, val)
 		return
 	case 0xc000 <= addr && addr <= 0xdfff:
 		mmu.wram[addr-0xc000] = val
@@ -147,12 +153,12 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 	timer := mmu.bus.Timer
 
 	switch {
-	case 0x0000 <= addr && addr <= 0x3FFF:
-		return mmu.cat.rom[addr]
-	case 0x4000 <= addr && addr <= 0x7FFF:
-		return mmu.cat.rom[addr]
+	case 0x0000 <= addr && addr <= 0x7FFF:
+		return mmu.cat.get8(addr)
 	case 0x8000 <= addr && addr <= 0x9FFF:
 		return ppu.Get8(addr)
+	case 0xa000 <= addr && addr <= 0xbfff:
+		return mmu.cat.get8(addr)
 	case 0xc000 <= addr && addr <= 0xdfff:
 		return mmu.wram[addr-0xc000]
 	case 0xe000 <= addr && addr <= 0xfdff:

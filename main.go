@@ -153,7 +153,7 @@ func (ts *TimeSynchronizer) maySleep() {
 	curTime := time.Now()
 	dur := curTime.Sub(ts.prevTime)
 	diff := ts.usPerFrame - int(dur.Microseconds())
-	if diff > 0 {
+	if diff > 1000 { // Larger than 1ms to avoid overhead of sleeping
 		time.Sleep(time.Duration(diff) * time.Microsecond)
 	}
 	ts.prevTime = curTime
@@ -225,7 +225,7 @@ LabelMainLoop:
 		}
 
 		// Compute
-		for cnt := 0; cnt < 145*(144+10); { // Emulate one frame
+		for cnt := 0; cnt < 456*154; { // Emulate one frame
 			tick, err := cpu.Step()
 			if err != nil {
 				return err

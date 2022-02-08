@@ -193,7 +193,7 @@ func (ppu *PPU) fetchTileIndex(isBG bool, x, y int) uint8 {
 	return tileNo
 }
 
-func (ppu *PPU) fetchTileColor(isObject bool, tileNo, paletteData uint8, pixX, pixY int) uint8 {
+func (ppu *PPU) fetchTileColor(isObject bool, tileNo, paletteData uint8, pixX, pixY int) (uint8, uint8) {
 	var off uint16
 	switch {
 	case isObject:
@@ -212,12 +212,13 @@ func (ppu *PPU) fetchTileColor(isObject bool, tileNo, paletteData uint8, pixX, p
 	paletteIdxMSB := (ppu.GetVRAM8(off+1) >> (7 - pixX)) & 1
 	paletteIdx := paletteIdxLSB | (paletteIdxMSB << 1)
 	color := (paletteData >> (2 * paletteIdx)) & 3
-	return color
+	return paletteIdx, color
 }
 
 func (ppu *PPU) fetchBGWindowTileColor(isBG bool, x, y int) uint8 {
 	tileNo := ppu.fetchTileIndex(isBG, x, y)
-	return ppu.fetchTileColor(false, tileNo, ppu.BGP(), x%8, y%8)
+	_, color := ppu.fetchTileColor(false, tileNo, ppu.BGP(), x%8, y%8)
+	return color
 }
 
 func (ppu *PPU) drawLineBG(scanline []uint8) {
@@ -275,10 +276,10 @@ func (ppu *PPU) drawLineObjects(scanline []uint8) {
 				ox = (objXSize - 1) - ox
 			}
 
-			color := ppu.fetchTileColor(true, obj.tileIndex, paletteData, ox, oy)
+			paletteIdx, color := ppu.fetchTileColor(true, obj.tileIndex, paletteData, ox, oy)
 
 			x := int(obj.screenX()) + ax
-			if x < LCD_WIDTH && color != 0 /* transparent */ {
+			if 0 <= x && x < LCD_WIDTH && paletteIdx != 0 /* transparent */ {
 				scanline[x] = color
 			}
 		}

@@ -95,6 +95,14 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 	case 0xff0f:
 		util.Trace1("\t<<<WRITE: IF Interrupt Flag: %b>>>", val)
 		cpu.SetIF(val)
+	case 0xff11:
+		util.Trace1("\t<<<WRITE: NR11 Channel 1 Sound length/Wave pattern duty: %b>>>", val)
+	case 0xff12:
+		util.Trace1("\t<<<WRITE: NR12 Channel 1 Volume Envelope: %b>>>", val)
+	case 0xff13:
+		util.Trace1("\t<<<WRITE: NR13 Channel 1 Frequency lo: %b>>>", val)
+	case 0xff14:
+		util.Trace1("\t<<<WRITE: NR14 Channel 1 Frequency hi: %b>>>", val)
 	case 0xff24:
 		util.Trace1("\t<<<WRITE: NR50 Channel control / On-OFF / Volume: %08b>>>", val)
 	case 0xff25:

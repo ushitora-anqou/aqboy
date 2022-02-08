@@ -84,6 +84,7 @@ type PPU interface {
 	BGP() uint8
 	OBP0() uint8
 	OBP1() uint8
+	Mode() uint8
 
 	SetLCDC(lcdc uint8)
 	SetSTAT(stat uint8)

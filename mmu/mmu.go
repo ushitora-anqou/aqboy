@@ -70,7 +70,8 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 		mmu.oam[addr-0xfe00] = val
 		return
 	case 0xfea0 <= addr && addr <= 0xfeff:
-		log.Fatalf("Invalid memory access of Set8: at 0x%08x", addr)
+		// FIXME: What behaviour is expected here?
+		return
 	case 0xff80 <= addr && addr <= 0xfffe:
 		mmu.hram[addr-0xff80] = val
 		return
@@ -174,7 +175,12 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 	case 0xfe00 <= addr && addr <= 0xfe9f:
 		return mmu.oam[addr-0xfe00]
 	case 0xfea0 <= addr && addr <= 0xfeff:
-		log.Fatalf("Invalid memory access of Get8: at 0x%08x", addr)
+		// FIXME: This access may trigger OAM corruption.
+		if mmu.bus.PPU.Mode() == 2 || mmu.bus.PPU.Mode() == 3 { // If OAM is blocked
+			return 0xff
+		} else { // If OAM is NOT blocked
+			return 0x00
+		}
 	case 0xff80 <= addr && addr <= 0xfffe:
 		return mmu.hram[addr-0xff80]
 	}

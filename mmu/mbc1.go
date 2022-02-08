@@ -102,6 +102,22 @@ func (cat *MBC1Cartridge) isUnbankableBank0Enabled() bool {
 	return cat.bankingMode != 0 && cat.largeROM
 }
 
+func (cat *MBC1Cartridge) getROMIndex(addr uint16) int {
+	if 0x0000 <= addr && addr <= 0x3fff { // ROM Bank X0
+		bank := 0
+		if cat.isUnbankableBank0Enabled() {
+			bank = cat.secondaryReg << 5
+		}
+		return bank*0x4000 + int(addr)
+	} else /* 0x4000 <= addr && addr <= 0x7fff */ { // ROM Bank 01-7F
+		bank := 0
+		if cat.isROMBankingEnabled() {
+			bank = (cat.secondaryReg << 5) | cat.romBankNumber
+		}
+		return bank*0x4000 + int(addr-0x4000)
+	}
+}
+
 func (cat *MBC1Cartridge) getRAMIndex(addr uint16) int {
 	index := int(addr - 0xa000)
 	if cat.isRAMBankingEnabled() {
@@ -112,20 +128,8 @@ func (cat *MBC1Cartridge) getRAMIndex(addr uint16) int {
 
 func (cat *MBC1Cartridge) get8(addr uint16) uint8 {
 	switch {
-	case 0x0000 <= addr && addr <= 0x3fff: // ROM Bank X0
-		bank := 0
-		if cat.isUnbankableBank0Enabled() {
-			bank = cat.secondaryReg << 5
-		}
-		index := bank*0x4000 + int(addr)
-		return cat.rom[index]
-
-	case 0x4000 <= addr && addr <= 0x7fff: // ROM Bank 01-7F
-		bank := 0
-		if cat.isROMBankingEnabled() {
-			bank = (cat.secondaryReg << 5) | cat.romBankNumber
-		}
-		index := bank*0x4000 + int(addr-0x4000)
+	case 0x0000 <= addr && addr <= 0x7fff: // ROM Bank
+		index := cat.getROMIndex(addr)
 		return cat.rom[index]
 
 	case 0xa000 <= addr && addr <= 0xbfff: // RAM Bank
@@ -135,4 +139,19 @@ func (cat *MBC1Cartridge) get8(addr uint16) uint8 {
 
 	log.Fatalf("Invalid address")
 	return 0
+}
+
+func (cat *MBC1Cartridge) getSliceXX00(prefix, size int) []uint8 {
+	switch {
+	case 0x00 <= prefix && prefix <= 0x7f: // ROM Bank
+		off := cat.getROMIndex(uint16(prefix << 8))
+		return cat.rom[off : off+size]
+
+	case 0xa0 <= prefix && prefix <= 0xbf: // RAM Bank
+		off := cat.getRAMIndex(uint16(prefix << 8))
+		return cat.ram[off : off+size]
+	}
+
+	log.Fatalf("Invalid address")
+	return nil
 }

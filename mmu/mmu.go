@@ -28,7 +28,6 @@ type MMU struct {
 	bus        *bus.Bus
 	cat        Cartridge
 	wram, hram []uint8
-	oam        [0x00a0]uint8
 }
 
 func NewMMU(bus *bus.Bus, catridgeFilePath string) (*MMU, error) {
@@ -55,7 +54,7 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 		mmu.cat.set8(addr, val)
 		return
 	case 0x8000 <= addr && addr <= 0x9FFF:
-		ppu.Set8(addr, val)
+		ppu.SetVRAM8(addr-0x8000, val)
 		return
 	case 0xa000 <= addr && addr <= 0xbfff:
 		mmu.cat.set8(addr, val)
@@ -67,10 +66,13 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 		mmu.wram[addr-0xe000] = val
 		return
 	case 0xfe00 <= addr && addr <= 0xfe9f:
-		mmu.oam[addr-0xfe00] = val
+		ppu.SetOAM8(addr-0xfe00, val)
 		return
 	case 0xfea0 <= addr && addr <= 0xfeff:
 		// FIXME: What behaviour is expected here?
+		return
+	case 0xff30 <= addr && addr <= 0xff3f: // Wave Pattern RAM
+		util.Trace2("\t<<<WRITE: Wave Pattern RAM: [%04x] 0x%02x>>>", addr, val)
 		return
 	case 0xff80 <= addr && addr <= 0xfffe:
 		mmu.hram[addr-0xff80] = val
@@ -91,19 +93,47 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 		util.Trace1("\t<<<WRITE: TMA Timer Modulo: %02x>>>", val)
 		timer.SetTMA(val)
 	case 0xff07:
-		util.Trace1("\t<<<WRITE: TAC Timer Control: %b>>>", val)
+		util.Trace1("\t<<<WRITE: TAC Timer Control: %08b>>>", val)
 		timer.SetTAC(val)
 	case 0xff0f:
-		util.Trace1("\t<<<WRITE: IF Interrupt Flag: %b>>>", val)
+		util.Trace1("\t<<<WRITE: IF Interrupt Flag: %08b>>>", val)
 		cpu.SetIF(val)
+	case 0xff10:
+		util.Trace1("\t<<<WRITE: NR10 Channel 1 Sweep register: %08b>>>", val)
 	case 0xff11:
-		util.Trace1("\t<<<WRITE: NR11 Channel 1 Sound length/Wave pattern duty: %b>>>", val)
+		util.Trace1("\t<<<WRITE: NR11 Channel 1 Sound length/Wave pattern duty: %08b>>>", val)
 	case 0xff12:
-		util.Trace1("\t<<<WRITE: NR12 Channel 1 Volume Envelope: %b>>>", val)
+		util.Trace1("\t<<<WRITE: NR12 Channel 1 Volume Envelope: %08b>>>", val)
 	case 0xff13:
-		util.Trace1("\t<<<WRITE: NR13 Channel 1 Frequency lo: %b>>>", val)
+		util.Trace1("\t<<<WRITE: NR13 Channel 1 Frequency lo: %08b>>>", val)
 	case 0xff14:
-		util.Trace1("\t<<<WRITE: NR14 Channel 1 Frequency hi: %b>>>", val)
+		util.Trace1("\t<<<WRITE: NR14 Channel 1 Frequency hi: %08b>>>", val)
+	case 0xff16:
+		util.Trace1("\t<<<WRITE: NR21 Channel 2 Sound Length/Wave Pattern Duty: %08b>>>", val)
+	case 0xff17:
+		util.Trace1("\t<<<WRITE: NR22 Channel 2 Volume Envelope: %08b>>>", val)
+	case 0xff18:
+		util.Trace1("\t<<<WRITE: NR23 Channel 2 Frequency lo data: %08b>>>", val)
+	case 0xff19:
+		util.Trace1("\t<<<WRITE: NR23 Channel 2 Frequency hi data: %08b>>>", val)
+	case 0xff20:
+		util.Trace1("\t<<<WRITE: NR41 Channel 4 Sound Length: 0x%02x>>>", val)
+	case 0xff21:
+		util.Trace1("\t<<<WRITE: NR42 Channel 4 Volume Envelope: %08b>>>", val)
+	case 0xff22:
+		util.Trace1("\t<<<WRITE: NR43 Channel 4 Polynomial Counter: %08b>>>", val)
+	case 0xff23:
+		util.Trace1("\t<<<WRITE: NR44 Channel 4 Counter/consecutive; Initial: %08b>>>", val)
+	case 0xff1a:
+		util.Trace1("\t<<<WRITE: NR30 Channel 3 Sound on/off: %08b>>>", val)
+	case 0xff1b:
+		util.Trace1("\t<<<WRITE: NR31 Channel 3 Sound Length: 0x%02x>>>", val)
+	case 0xff1c:
+		util.Trace1("\t<<<WRITE: NR32 Channel 3 Select output level: %08b>>>", val)
+	case 0xff1d:
+		util.Trace1("\t<<<WRITE: NR33 Channel 3 Frequency's lower data: 0x%02x>>>", val)
+	case 0xff1e:
+		util.Trace1("\t<<<WRITE: NR34 Channel 3 Frequency's higher data: %08b>>>", val)
 	case 0xff24:
 		util.Trace1("\t<<<WRITE: NR50 Channel control / On-OFF / Volume: %08b>>>", val)
 	case 0xff25:
@@ -125,6 +155,9 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 	case 0xff45:
 		util.Trace1("\t<<<WRITE: LYC LY Compare: 0x%02x>>>", val)
 		ppu.SetLYC(val)
+	case 0xff46:
+		util.Trace1("\t<<<WRITE: OMA DMA Transfer: 0x%02x>>>", val)
+		mmu.bus.PPU.TransferOAM(val)
 	case 0xff47:
 		util.Trace1("\t<<<WRITE: BGP BG Palette Data Non CGB Mode Only: %08b>>>", val)
 		ppu.SetBGP(val)
@@ -165,7 +198,7 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 	case 0x0000 <= addr && addr <= 0x7FFF:
 		return mmu.cat.get8(addr)
 	case 0x8000 <= addr && addr <= 0x9FFF:
-		return ppu.Get8(addr)
+		return ppu.GetVRAM8(addr - 0x8000)
 	case 0xa000 <= addr && addr <= 0xbfff:
 		return mmu.cat.get8(addr)
 	case 0xc000 <= addr && addr <= 0xdfff:
@@ -173,7 +206,7 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 	case 0xe000 <= addr && addr <= 0xfdff:
 		return mmu.wram[addr-0xe000]
 	case 0xfe00 <= addr && addr <= 0xfe9f:
-		return mmu.oam[addr-0xfe00]
+		return ppu.GetOAM8(addr - 0xfe00)
 	case 0xfea0 <= addr && addr <= 0xfeff:
 		// FIXME: This access may trigger OAM corruption.
 		if mmu.bus.PPU.Mode() == 2 || mmu.bus.PPU.Mode() == 3 { // If OAM is blocked
@@ -212,6 +245,9 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 	case 0xff40:
 		util.Trace0("\t<<<READ: LCDC LCD Control>>>")
 		return ppu.LCDC()
+	case 0xff41:
+		util.Trace0("\t<<<READ: STAT LCDC Status>>>")
+		return ppu.STAT()
 	case 0xff44:
 		util.Trace0("\t<<<READ: LY - LCDC Y-Coordinate>>>")
 		return ppu.LY()
@@ -235,4 +271,19 @@ func (mmu *MMU) Get16(addr uint16) uint16 {
 func (mmu *MMU) Set16(addr uint16, val uint16) {
 	mmu.Set8(addr, uint8(val))
 	mmu.Set8(addr+1, uint8(val>>8))
+}
+
+func (mmu *MMU) GetSliceXX00(prefix, size int) []uint8 {
+	switch {
+	case (0x00 <= prefix && prefix <= 0x7F) || (0xa0 <= prefix && prefix <= 0xbf):
+		return mmu.cat.getSliceXX00(prefix, size)
+
+	case 0xc0 <= prefix && prefix <= 0xdf:
+		off := (prefix - 0xc0) << 8
+		return mmu.wram[off : off+size]
+
+	default:
+		log.Fatalf("GetSliceXX00: Invalid prefix: %02x", prefix)
+	}
+	return nil
 }

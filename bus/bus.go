@@ -71,13 +71,18 @@ type MMU interface {
 	Get16(addr uint16) uint16
 	Set8(addr uint16, val uint8)
 	Set16(addr uint16, val uint16)
+	GetSliceXX00(prefix, size int) []uint8
 }
 
 type PPU interface {
-	Get8(addr uint16) uint8
-	Set8(addr uint16, val uint8)
+	GetVRAM8(index uint16) uint8
+	SetVRAM8(index uint16, val uint8)
+	GetOAM8(index uint16) uint8
+	SetOAM8(index uint16, val uint8)
+	TransferOAM(srcAddr uint8)
 
 	LCDC() uint8
+	STAT() uint8
 	LY() uint8
 	SCX() uint8
 	SCY() uint8

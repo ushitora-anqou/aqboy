@@ -14,6 +14,7 @@ const BG_PX_HEIGHT = 256
 type PPU struct {
 	bus                                                         *bus.Bus
 	vram                                                        [0x2000]uint8
+	oam                                                         [0xa0]uint8
 	scx, scy, bgp, obp0, obp1, lcdc, ly, lyc, wx, wy, wly, stat uint8
 	tick                                                        uint
 }
@@ -26,12 +27,20 @@ func NewPPU(bus *bus.Bus) *PPU {
 	return ppu
 }
 
-func (ppu *PPU) Get8(addr uint16) uint8 {
-	return ppu.vram[addr-0x8000]
+func (ppu *PPU) GetVRAM8(index uint16) uint8 {
+	return ppu.vram[index]
 }
 
-func (ppu *PPU) Set8(addr uint16, val uint8) {
-	ppu.vram[addr-0x8000] = val
+func (ppu *PPU) SetVRAM8(index uint16, val uint8) {
+	ppu.vram[index] = val
+}
+
+func (ppu *PPU) GetOAM8(index uint16) uint8 {
+	return ppu.oam[index]
+}
+
+func (ppu *PPU) SetOAM8(index uint16, val uint8) {
+	ppu.oam[index] = val
 }
 
 func (ppu *PPU) LCDC() uint8 {
@@ -180,7 +189,7 @@ func (ppu *PPU) fetchTileIndex(isBG bool, x, y int) uint8 {
 		tileMapAddr = ppu.getWindowTileMapAddr()
 	}
 
-	tileNo := ppu.Get8(uint16(int(tileMapAddr) + 32*tile_y + tile_x))
+	tileNo := ppu.GetVRAM8(uint16(int(tileMapAddr) - 0x8000 + 32*tile_y + tile_x))
 	return tileNo
 }
 
@@ -192,15 +201,15 @@ func (ppu *PPU) fetchTileColor(isObject bool, tileNo, paletteData uint8, pixX, p
 			// Bit 0 of tile index for 8x16 objects should be ignored.
 			tileNo &^= 1 << 0
 		}
-		off = uint16(0x8000 + int(tileNo)*16 + 2*pixY)
+		off = uint16(int(tileNo)*16 + 2*pixY)
 	case ppu.getBGWindowTileDataArea():
-		off = uint16(0x8000 + int(tileNo)*16 + 2*pixY)
+		off = uint16(int(tileNo)*16 + 2*pixY)
 	default:
-		off = uint16(0x9000 + int(int8(tileNo))*16 + 2*pixY)
+		off = uint16(0x1000 + int(int8(tileNo))*16 + 2*pixY)
 	}
 
-	paletteIdxLSB := (ppu.Get8(off) >> (7 - pixX)) & 1
-	paletteIdxMSB := (ppu.Get8(off+1) >> (7 - pixX)) & 1
+	paletteIdxLSB := (ppu.GetVRAM8(off) >> (7 - pixX)) & 1
+	paletteIdxMSB := (ppu.GetVRAM8(off+1) >> (7 - pixX)) & 1
 	paletteIdx := paletteIdxLSB | (paletteIdxMSB << 1)
 	color := (paletteData >> (2 * paletteIdx)) & 3
 	return color
@@ -348,14 +357,21 @@ func (ppu *PPU) Update(elapsedTick uint) error {
 		ppu.updateLYCLYCoincidence()
 		ppu.updateInterrupt()
 
-	case ppu.Mode() == 1 && ppu.tick >= 4560: // V-Blank --> OAM Search
-		ppu.tick -= 4560
-		ppu.ly = 0
-		ppu.wly = 0
-		ppu.SetMode(2)
+	case ppu.Mode() == 1 && ppu.tick >= 456: // V-Blank --> V-Blank | OAM Search
+		ppu.tick -= 456
+		ppu.ly += 1
+		if ppu.LY() == 155 { // V-Blank --> OAM Search
+			ppu.ly = 0
+			ppu.wly = 0
+			ppu.SetMode(2)
+			ppu.updateInterrupt()
+		}
 		ppu.updateLYCLYCoincidence()
-		ppu.updateInterrupt()
 	}
 
 	return nil
+}
+
+func (ppu *PPU) TransferOAM(srcPrefix uint8) {
+	copy(ppu.oam[:], ppu.bus.MMU.GetSliceXX00(int(srcPrefix), 0xa0))
 }

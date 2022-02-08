@@ -32,7 +32,7 @@ type SDLWindow struct {
 }
 
 func NewSDLWindow() (*SDLWindow, error) {
-	var width, height int32 = ppu.LCD_WIDTH * 4, ppu.LCD_HEIGHT * 4
+	var width, height int32 = ppu.LCD_WIDTH * 5, ppu.LCD_HEIGHT * 5
 	window, err := sdl.CreateWindow(
 		"aqboy",
 		sdl.WINDOWPOS_UNDEFINED,

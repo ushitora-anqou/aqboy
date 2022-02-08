@@ -25,7 +25,7 @@ func NewMBC1Cartridge(filePath string) (*MBC1Cartridge, error) {
 	}
 
 	//  ROM Size
-	log2ROMBanks := 1 << (src[0x148] + 1)
+	log2ROMBanks := int(src[0x148] + 1)
 	if log2ROMBanks > 7 {
 		return nil, fmt.Errorf("Unsupported ROM Size: %d", src[0x148])
 	}

@@ -7,6 +7,13 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
+var palette = [4]uint8{
+	0xff, // White
+	0xcc, // Light gray
+	0x44, // Dark gray
+	0x00, // Black
+}
+
 type SDLWindow struct {
 	window        *sdl.Window
 	renderer      *sdl.Renderer
@@ -100,17 +107,7 @@ func (wind *SDLWindow) UpdateScreen() error {
 	for row := 0; row < ppu.LCD_HEIGHT; row++ {
 		for col := 0; col < ppu.LCD_WIDTH; col++ {
 			off := row*ppu.LCD_WIDTH + col
-			var color byte = 0
-			switch wind.srcPic[off] {
-			case 0: // White
-				color = 0xff
-			case 1: // Light gray
-				color = 0xcc
-			case 2: // Dark gray
-				color = 0x44
-			case 3: // Black
-				color = 0x00
-			}
+			color := palette[wind.srcPic[off]]
 			pixels[off*4+0] = color // b
 			pixels[off*4+1] = color // g
 			pixels[off*4+2] = color // r

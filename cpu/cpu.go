@@ -686,12 +686,7 @@ func (cpu *CPU) Step() (uint, error) {
 	interruptTick := cpu.handleInterrupt()
 
 	if cpu.Halted() {
-		if util.IsTraceEnabled() {
-			// FIXME: This guard is semantically not necessary.
-			// However, without this guard, the performance of this emulator becomes
-			// very bad. I need to find the reason for this.
-			cpu.traceInst0("(halted)")
-		}
+		cpu.traceInst0("(halted)")
 		return 4, nil
 	}
 

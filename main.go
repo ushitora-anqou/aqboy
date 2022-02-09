@@ -13,6 +13,7 @@ import (
 	"github.com/ushitora-anqou/aqboy/apu"
 	"github.com/ushitora-anqou/aqboy/bus"
 	"github.com/ushitora-anqou/aqboy/cpu"
+	"github.com/ushitora-anqou/aqboy/joypad"
 	"github.com/ushitora-anqou/aqboy/mmu"
 	"github.com/ushitora-anqou/aqboy/ppu"
 	"github.com/ushitora-anqou/aqboy/timer"
@@ -58,9 +59,10 @@ func doRun(wind window.Window) error {
 	}
 	timer := timer.NewTimer(bus)
 	apu := apu.NewAPU()
+	joypad := joypad.NewJoypad()
 
 	// Build up the bus
-	bus.Register(cpu, mmu, ppu, wind, timer, apu)
+	bus.Register(cpu, mmu, ppu, wind, timer, apu, joypad)
 
 	// Main loop
 	synchronizer := window.NewTimeSynchronizer(wind, 60 /* FPS */)
@@ -71,6 +73,8 @@ LabelMainLoop:
 		if event.Escape {
 			break
 		}
+		joypad.SetDirection(event.Direction)
+		joypad.SetAction(event.Action)
 
 		// Compute
 		for cnt := 0; cnt < 456*154; { // Emulate one frame

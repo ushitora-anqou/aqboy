@@ -107,17 +107,24 @@ type LCD interface {
 	DrawLine(ly int, scanline []uint8) error
 }
 
+type Timer interface {
+	DIV() uint8
+	TIMA() uint8
+	TMA() uint8
+	TAC() uint8
+	ResetDIV()
+	SetTIMA(val uint8)
+	SetTMA(val uint8)
+	SetTAC(val uint8)
+}
+
 type APU interface {
 	Set8(addr uint16, val uint8)
 }
 
-type Timer interface {
-	TIMA() uint8
-	TMA() uint8
-	TAC() uint8
-	SetTIMA(val uint8)
-	SetTMA(val uint8)
-	SetTAC(val uint8)
+type Joypad interface {
+	Set(val uint8)
+	Get() uint8
 }
 
 type Bus struct {
@@ -127,17 +134,19 @@ type Bus struct {
 	LCD
 	Timer
 	APU
+	Joypad
 }
 
 func NewBus() *Bus {
 	return &Bus{}
 }
 
-func (b *Bus) Register(cpu CPU, mmu MMU, ppu PPU, lcd LCD, timer Timer, apu APU) {
+func (b *Bus) Register(cpu CPU, mmu MMU, ppu PPU, lcd LCD, timer Timer, apu APU, joypad Joypad) {
 	b.CPU = cpu
 	b.MMU = mmu
 	b.PPU = ppu
 	b.LCD = lcd
 	b.Timer = timer
 	b.APU = apu
+	b.Joypad = joypad
 }

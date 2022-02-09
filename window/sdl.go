@@ -3,6 +3,7 @@ package window
 import (
 	"fmt"
 
+	"github.com/ushitora-anqou/aqboy/constant"
 	"github.com/ushitora-anqou/aqboy/ppu"
 	"github.com/veandco/go-sdl2/sdl"
 )
@@ -15,11 +16,12 @@ var palette = [4]uint8{
 }
 
 type SDLWindow struct {
-	window        *sdl.Window
-	renderer      *sdl.Renderer
-	texture       *sdl.Texture
-	width, height int32
-	srcPic        [ppu.LCD_WIDTH * ppu.LCD_HEIGHT]uint8
+	window                    *sdl.Window
+	renderer                  *sdl.Renderer
+	texture                   *sdl.Texture
+	width, height             int32
+	srcPic                    [ppu.LCD_WIDTH * ppu.LCD_HEIGHT]uint8
+	prevAction, prevDirection uint8
 }
 
 func NewSDLWindow() (*SDLWindow, error) {
@@ -52,12 +54,12 @@ func NewSDLWindow() (*SDLWindow, error) {
 	}
 
 	return &SDLWindow{
-		window,
-		renderer,
-		texture,
-		width,
-		height,
-		[ppu.LCD_WIDTH * ppu.LCD_HEIGHT]uint8{},
+		window:   window,
+		renderer: renderer,
+		texture:  texture,
+		width:    width,
+		height:   height,
+		srcPic:   [ppu.LCD_WIDTH * ppu.LCD_HEIGHT]uint8{},
 	}, nil
 }
 
@@ -84,18 +86,71 @@ func (wind *SDLWindow) DrawLine(ly int, scanline []uint8) error {
 }
 
 func (wind *SDLWindow) HandleEvents() *WindowEvent {
+	we := &WindowEvent{
+		Action:    wind.prevAction,
+		Direction: wind.prevDirection,
+	}
+
 	for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 		switch event.(type) {
 		case *sdl.QuitEvent:
-			return &WindowEvent{Escape: true}
+			we.Escape = true
+			break
+
 		case *sdl.KeyboardEvent:
-			switch event.(*sdl.KeyboardEvent).Keysym.Sym {
-			case sdl.K_ESCAPE:
-				return &WindowEvent{Escape: true}
+			kbEvent := event.(*sdl.KeyboardEvent)
+			switch kbEvent.Type {
+			case sdl.KEYDOWN:
+				switch kbEvent.Keysym.Sym {
+				case sdl.K_ESCAPE:
+					we.Escape = true
+				case sdl.K_w:
+					we.Direction |= (1 << constant.DIR_UP)
+				case sdl.K_a:
+					we.Direction |= (1 << constant.DIR_LEFT)
+				case sdl.K_d:
+					we.Direction |= (1 << constant.DIR_RIGHT)
+				case sdl.K_s:
+					we.Direction |= (1 << constant.DIR_DOWN)
+				case sdl.K_k:
+					we.Action |= (1 << constant.ACT_A)
+				case sdl.K_j:
+					we.Action |= (1 << constant.ACT_B)
+				case sdl.K_RETURN:
+					we.Action |= (1 << constant.ACT_START)
+				case sdl.K_SPACE:
+					we.Action |= (1 << constant.ACT_SELECT)
+				}
+
+			case sdl.KEYUP:
+				switch kbEvent.Keysym.Sym {
+				case sdl.K_ESCAPE:
+					we.Escape = false
+				case sdl.K_w:
+					we.Direction &^= (1 << constant.DIR_UP)
+				case sdl.K_a:
+					we.Direction &^= (1 << constant.DIR_LEFT)
+				case sdl.K_d:
+					we.Direction &^= (1 << constant.DIR_RIGHT)
+				case sdl.K_s:
+					we.Direction &^= (1 << constant.DIR_DOWN)
+				case sdl.K_k:
+					we.Action &^= (1 << constant.ACT_A)
+				case sdl.K_j:
+					we.Action &^= (1 << constant.ACT_B)
+				case sdl.K_RETURN:
+					we.Action &^= (1 << constant.ACT_START)
+				case sdl.K_SPACE:
+					we.Action &^= (1 << constant.ACT_SELECT)
+				}
 			}
 		}
 	}
-	return &WindowEvent{}
+
+	wind.prevAction = we.Action
+	wind.prevDirection = we.Direction
+
+	return we
 }
 
 func (wind *SDLWindow) UpdateScreen() error {

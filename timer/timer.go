@@ -5,15 +5,19 @@ import (
 )
 
 type Timer struct {
-	bus            *bus.Bus
-	tima, tma, tac uint8
-	tick           uint
+	bus                 *bus.Bus
+	tima, tma, tac, div uint8
+	tick, tickDiv       uint
 }
 
 func NewTimer(bus *bus.Bus) *Timer {
 	return &Timer{
 		bus: bus,
 	}
+}
+
+func (t *Timer) DIV() uint8 {
+	return t.div
 }
 
 func (t *Timer) TIMA() uint8 {
@@ -26,6 +30,10 @@ func (t *Timer) TMA() uint8 {
 
 func (t *Timer) TAC() uint8 {
 	return t.tac
+}
+
+func (t *Timer) ResetDIV() {
+	t.div = 0
 }
 
 func (t *Timer) SetTIMA(val uint8) {
@@ -78,5 +86,11 @@ func (t *Timer) Update(tick uint) {
 	for t.tick > thr {
 		t.tick -= thr
 		t.incTIMA()
+	}
+
+	t.tickDiv += tick
+	if t.tickDiv > 16384 {
+		t.tickDiv -= 16384
+		t.div += 1
 	}
 }

@@ -49,6 +49,7 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 	ppu := mmu.bus.PPU
 	timer := mmu.bus.Timer
 	apu := mmu.bus.APU
+	joypad := mmu.bus.Joypad
 
 	switch {
 	case 0x0000 <= addr && addr <= 0x7fff:
@@ -83,10 +84,14 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 	switch addr {
 	case 0xff00:
 		util.Trace1("\t<<<WRITE: P1/JOYP Joypad: %08b>>>", val)
+		joypad.Set(val)
 	case 0xff01:
 		util.Trace0("\t<<<WRITE: SB Serial transfer data>>>")
 	case 0xff02:
 		util.Trace0("\t<<<WRITE: SC Serial Transfer Control>>>")
+	case 0xff04:
+		util.Trace1("\t<<<WRITE: DIV Divider Register: %02x>>>", val)
+		timer.ResetDIV()
 	case 0xff05:
 		util.Trace1("\t<<<WRITE: TIMA Timer counter: %02x>>>", val)
 		timer.SetTIMA(val)
@@ -152,6 +157,7 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 	ppu := mmu.bus.PPU
 	cpu := mmu.bus.CPU
 	timer := mmu.bus.Timer
+	joypad := mmu.bus.Joypad
 
 	switch {
 	case 0x0000 <= addr && addr <= 0x7FFF:
@@ -180,7 +186,10 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 	switch addr {
 	case 0xff00:
 		util.Trace0("\t<<<READ: P1/JOYP Joypad>>>")
-		return 0xff
+		return joypad.Get()
+	case 0xff04:
+		util.Trace0("\t<<<READ: DIV Divider Register>>>")
+		return timer.DIV()
 	case 0xff05:
 		util.Trace0("\t<<<READ: TIMA Timer counter>>>")
 		return timer.TIMA()

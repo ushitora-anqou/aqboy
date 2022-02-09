@@ -1,7 +1,8 @@
 package window
 
 type WindowEvent struct {
-	Escape bool
+	Escape            bool
+	Direction, Action uint8
 }
 
 type Window interface {

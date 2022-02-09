@@ -221,6 +221,7 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 	switch addr {
 	case 0xff00:
 		util.Trace0("\t<<<READ: P1/JOYP Joypad>>>")
+		return 0xff
 	case 0xff05:
 		util.Trace0("\t<<<READ: TIMA Timer counter>>>")
 		return timer.TIMA()

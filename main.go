@@ -8,8 +8,6 @@ import (
 	"runtime/pprof"
 	"strconv"
 
-	"github.com/veandco/go-sdl2/sdl"
-
 	"github.com/ushitora-anqou/aqboy/apu"
 	"github.com/ushitora-anqou/aqboy/bus"
 	"github.com/ushitora-anqou/aqboy/cpu"
@@ -110,16 +108,16 @@ LabelMainLoop:
 
 func run() error {
 	// Initialize SDL
-	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
+	if err := window.SDLInitialize(); err != nil {
 		return err
 	}
-	defer sdl.Quit()
 
 	// Create a window
 	wind, err := window.NewSDLWindow()
 	if err != nil {
 		return err
 	}
+
 	return doRun(wind)
 }
 

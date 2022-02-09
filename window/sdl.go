@@ -1,8 +1,14 @@
 package window
 
+// typedef unsigned char Uint8;
+// void OnAudioPlayback(void *userdata, Uint8 *stream, int len);
+import "C"
 import (
 	"fmt"
+	"reflect"
+	"unsafe"
 
+	"github.com/mattn/go-pointer"
 	"github.com/ushitora-anqou/aqboy/constant"
 	"github.com/ushitora-anqou/aqboy/ppu"
 	"github.com/veandco/go-sdl2/sdl"
@@ -15,6 +21,16 @@ var palette = [4]uint8{
 	0x00, // Black
 }
 
+const (
+	AudioFreq    = 48000
+	AudioSamples = 512
+	Channels     = 2
+)
+
+func SDLInitialize() error {
+	return sdl.Init(sdl.INIT_EVERYTHING)
+}
+
 type SDLWindow struct {
 	window                    *sdl.Window
 	renderer                  *sdl.Renderer
@@ -22,6 +38,8 @@ type SDLWindow struct {
 	width, height             int32
 	srcPic                    [ppu.LCD_WIDTH * ppu.LCD_HEIGHT]uint8
 	prevAction, prevDirection uint8
+	audioDevice               sdl.AudioDeviceID
+	audioBuffer               [][]C.Uint8
 }
 
 func NewSDLWindow() (*SDLWindow, error) {
@@ -53,14 +71,37 @@ func NewSDLWindow() (*SDLWindow, error) {
 		return nil, err
 	}
 
-	return &SDLWindow{
-		window:   window,
-		renderer: renderer,
-		texture:  texture,
-		width:    width,
-		height:   height,
-		srcPic:   [ppu.LCD_WIDTH * ppu.LCD_HEIGHT]uint8{},
-	}, nil
+	wind := &SDLWindow{
+		window:      window,
+		renderer:    renderer,
+		texture:     texture,
+		width:       width,
+		height:      height,
+		srcPic:      [ppu.LCD_WIDTH * ppu.LCD_HEIGHT]uint8{},
+		audioBuffer: [][]C.Uint8{},
+	}
+
+	audioDevice, err := sdl.OpenAudioDevice(
+		"",
+		false,
+		&sdl.AudioSpec{
+			Freq:     AudioFreq,
+			Format:   sdl.AUDIO_U8,
+			Channels: Channels,
+			Samples:  AudioSamples,
+			Callback: sdl.AudioCallback(C.OnAudioPlayback),
+			UserData: pointer.Save(wind),
+		},
+		nil,
+		0,
+	)
+	if err != nil {
+		return nil, err
+	}
+	sdl.PauseAudioDevice(audioDevice, false)
+	wind.audioDevice = audioDevice
+
+	return wind, nil
 }
 
 func (wind *SDLWindow) getTicks() int64 {
@@ -177,4 +218,49 @@ func (wind *SDLWindow) UpdateScreen() error {
 	wind.renderer.Present()
 
 	return nil
+}
+
+func (wind *SDLWindow) enqueueAudioBuffer(buf []uint8) error {
+	if len(buf) != AudioSamples*Channels {
+		return fmt.Errorf("Invalid length of audio buffer")
+	}
+
+	// Copy buf to bufC.
+	// FIXME: Maybe there is faster technique.
+	bufC := make([]C.Uint8, AudioSamples)
+	for i, v := range buf {
+		bufC[i] = C.Uint8(v)
+	}
+
+	// Enqueue
+	wind.audioBuffer = append(wind.audioBuffer, bufC)
+
+	return nil
+}
+
+func (wind *SDLWindow) popAudioBuffer() []C.Uint8 {
+	if len(wind.audioBuffer) == 0 {
+		return nil
+	}
+
+	ret := wind.audioBuffer[0]
+	wind.audioBuffer = wind.audioBuffer[1:]
+	return ret
+}
+
+//export OnAudioPlayback
+func OnAudioPlayback(userdata unsafe.Pointer, stream *C.Uint8, length C.int) {
+	n := int(length)
+	hdr := reflect.SliceHeader{Data: uintptr(unsafe.Pointer(stream)), Len: n, Cap: n}
+	buf := *(*[]C.Uint8)(unsafe.Pointer(&hdr))
+	wind := pointer.Restore(userdata).(*SDLWindow)
+	src := wind.popAudioBuffer()
+
+	if src == nil {
+		for i := range buf {
+			buf[i] = 0
+		}
+	} else {
+		copy(buf, src)
+	}
 }

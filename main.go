@@ -80,9 +80,12 @@ LabelMainLoop:
 			timer.Update(tick)
 			cnt += int(tick)
 
-			util.Trace4("                af=%04x    bc=%04x    de=%04x    hl=%04x", cpu.AF(), cpu.BC(), cpu.DE(), cpu.HL())
-			util.Trace6("                sp=%04x    pc=%04x    Z=%d  N=%d  H=%d  C=%d", cpu.SP(), cpu.PC(), util.BoolToU8(cpu.FlagZ()), util.BoolToU8(cpu.FlagN()), util.BoolToU8(cpu.FlagH()), util.BoolToU8(cpu.FlagC()))
-			util.Trace2("                ime=%d      tima=%02x", util.BoolToU8(cpu.IME()), timer.TIMA())
+			util.Trace4("                af=%04x    bc=%04x    de=%04x    hl=%04x",
+				cpu.AF(), cpu.BC(), cpu.DE(), cpu.HL())
+			util.Trace6("                sp=%04x    pc=%04x    Z=%d  N=%d  H=%d  C=%d",
+				cpu.SP(), cpu.PC(), util.BoolToU8(cpu.FlagZ()), util.BoolToU8(cpu.FlagN()), util.BoolToU8(cpu.FlagH()), util.BoolToU8(cpu.FlagC()))
+			util.Trace2("                ime=%d      tima=%02x",
+				util.BoolToU8(cpu.IME()), timer.TIMA())
 
 			if breakpointAddr != nil && cpu.PC() == *breakpointAddr {
 				break LabelMainLoop
@@ -105,6 +108,7 @@ func run() error {
 		return err
 	}
 	defer sdl.Quit()
+
 	// Create a window
 	wind, err := window.NewSDLWindow()
 	if err != nil {

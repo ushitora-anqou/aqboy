@@ -10,6 +10,7 @@ import (
 
 	"github.com/veandco/go-sdl2/sdl"
 
+	"github.com/ushitora-anqou/aqboy/apu"
 	"github.com/ushitora-anqou/aqboy/bus"
 	"github.com/ushitora-anqou/aqboy/cpu"
 	"github.com/ushitora-anqou/aqboy/mmu"
@@ -56,9 +57,10 @@ func doRun(wind window.Window) error {
 		return err
 	}
 	timer := timer.NewTimer(bus)
+	apu := apu.NewAPU()
 
 	// Build up the bus
-	bus.Register(cpu, mmu, ppu, wind, timer)
+	bus.Register(cpu, mmu, ppu, wind, timer, apu)
 
 	// Main loop
 	synchronizer := window.NewTimeSynchronizer(wind, 60 /* FPS */)

@@ -107,6 +107,10 @@ type LCD interface {
 	DrawLine(ly int, scanline []uint8) error
 }
 
+type APU interface {
+	Set8(addr uint16, val uint8)
+}
+
 type Timer interface {
 	TIMA() uint8
 	TMA() uint8
@@ -122,16 +126,18 @@ type Bus struct {
 	PPU
 	LCD
 	Timer
+	APU
 }
 
 func NewBus() *Bus {
 	return &Bus{}
 }
 
-func (b *Bus) Register(cpu CPU, mmu MMU, ppu PPU, lcd LCD, timer Timer) {
+func (b *Bus) Register(cpu CPU, mmu MMU, ppu PPU, lcd LCD, timer Timer, apu APU) {
 	b.CPU = cpu
 	b.MMU = mmu
 	b.PPU = ppu
 	b.LCD = lcd
 	b.Timer = timer
+	b.APU = apu
 }

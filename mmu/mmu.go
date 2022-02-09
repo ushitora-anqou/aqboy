@@ -48,6 +48,7 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 	cpu := mmu.bus.CPU
 	ppu := mmu.bus.PPU
 	timer := mmu.bus.Timer
+	apu := mmu.bus.APU
 
 	switch {
 	case 0x0000 <= addr && addr <= 0x7fff:
@@ -71,8 +72,8 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 	case 0xfea0 <= addr && addr <= 0xfeff:
 		// FIXME: What behaviour is expected here?
 		return
-	case 0xff30 <= addr && addr <= 0xff3f: // Wave Pattern RAM
-		util.Trace2("\t<<<WRITE: Wave Pattern RAM: [%04x] 0x%02x>>>", addr, val)
+	case 0xff10 <= addr && addr <= 0xff3f:
+		apu.Set8(addr, val)
 		return
 	case 0xff80 <= addr && addr <= 0xfffe:
 		mmu.hram[addr-0xff80] = val
@@ -98,48 +99,6 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 	case 0xff0f:
 		util.Trace1("\t<<<WRITE: IF Interrupt Flag: %08b>>>", val)
 		cpu.SetIF(val)
-	case 0xff10:
-		util.Trace1("\t<<<WRITE: NR10 Channel 1 Sweep register: %08b>>>", val)
-	case 0xff11:
-		util.Trace1("\t<<<WRITE: NR11 Channel 1 Sound length/Wave pattern duty: %08b>>>", val)
-	case 0xff12:
-		util.Trace1("\t<<<WRITE: NR12 Channel 1 Volume Envelope: %08b>>>", val)
-	case 0xff13:
-		util.Trace1("\t<<<WRITE: NR13 Channel 1 Frequency lo: %08b>>>", val)
-	case 0xff14:
-		util.Trace1("\t<<<WRITE: NR14 Channel 1 Frequency hi: %08b>>>", val)
-	case 0xff16:
-		util.Trace1("\t<<<WRITE: NR21 Channel 2 Sound Length/Wave Pattern Duty: %08b>>>", val)
-	case 0xff17:
-		util.Trace1("\t<<<WRITE: NR22 Channel 2 Volume Envelope: %08b>>>", val)
-	case 0xff18:
-		util.Trace1("\t<<<WRITE: NR23 Channel 2 Frequency lo data: %08b>>>", val)
-	case 0xff19:
-		util.Trace1("\t<<<WRITE: NR23 Channel 2 Frequency hi data: %08b>>>", val)
-	case 0xff20:
-		util.Trace1("\t<<<WRITE: NR41 Channel 4 Sound Length: 0x%02x>>>", val)
-	case 0xff21:
-		util.Trace1("\t<<<WRITE: NR42 Channel 4 Volume Envelope: %08b>>>", val)
-	case 0xff22:
-		util.Trace1("\t<<<WRITE: NR43 Channel 4 Polynomial Counter: %08b>>>", val)
-	case 0xff23:
-		util.Trace1("\t<<<WRITE: NR44 Channel 4 Counter/consecutive; Initial: %08b>>>", val)
-	case 0xff1a:
-		util.Trace1("\t<<<WRITE: NR30 Channel 3 Sound on/off: %08b>>>", val)
-	case 0xff1b:
-		util.Trace1("\t<<<WRITE: NR31 Channel 3 Sound Length: 0x%02x>>>", val)
-	case 0xff1c:
-		util.Trace1("\t<<<WRITE: NR32 Channel 3 Select output level: %08b>>>", val)
-	case 0xff1d:
-		util.Trace1("\t<<<WRITE: NR33 Channel 3 Frequency's lower data: 0x%02x>>>", val)
-	case 0xff1e:
-		util.Trace1("\t<<<WRITE: NR34 Channel 3 Frequency's higher data: %08b>>>", val)
-	case 0xff24:
-		util.Trace1("\t<<<WRITE: NR50 Channel control / On-OFF / Volume: %08b>>>", val)
-	case 0xff25:
-		util.Trace1("\t<<<WRITE: NR51 Selection of Sound output terminal: %08b>>>", val)
-	case 0xff26:
-		util.Trace1("\t<<<WRITE: NR52 Sound on/off: %08b>>>", val)
 	case 0xff40:
 		util.Trace1("\t<<<WRITE: LCDC LCD Control: %08b>>>", val)
 		ppu.SetLCDC(val)

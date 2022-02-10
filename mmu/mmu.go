@@ -158,6 +158,7 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 	cpu := mmu.bus.CPU
 	timer := mmu.bus.Timer
 	joypad := mmu.bus.Joypad
+	apu := mmu.bus.APU
 
 	switch {
 	case 0x0000 <= addr && addr <= 0x7FFF:
@@ -179,6 +180,8 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 		} else { // If OAM is NOT blocked
 			return 0x00
 		}
+	case 0xff10 <= addr && addr <= 0xff3f:
+		return apu.Get8(addr)
 	case 0xff80 <= addr && addr <= 0xfffe:
 		return mmu.hram[addr-0xff80]
 	}
@@ -205,12 +208,6 @@ func (mmu *MMU) Get8(addr uint16) uint8 {
 	case 0xffff:
 		util.Trace0("\t<<<READ: IE Interrupt Enable>>>")
 		return cpu.IE()
-	case 0xff24:
-		util.Trace0("\t<<<READ: NR50 Channel control / On-OFF / Volume>>>")
-	case 0xff25:
-		util.Trace0("\t<<<READ: NR51 Selection of Sound output terminal>>>")
-	case 0xff26:
-		util.Trace0("\t<<<READ: NR52 Sound on/off>>>")
 	case 0xff40:
 		util.Trace0("\t<<<READ: LCDC LCD Control>>>")
 		return ppu.LCDC()

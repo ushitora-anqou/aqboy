@@ -120,6 +120,7 @@ type Timer interface {
 
 type APU interface {
 	Set8(addr uint16, val uint8)
+	Get8(addr uint16) uint8
 }
 
 type Joypad interface {

@@ -1,5 +1,6 @@
 package window
 
+// typedef float Float32;
 // typedef unsigned char Uint8;
 // void OnAudioPlayback(void *userdata, Uint8 *stream, int len);
 import "C"
@@ -20,12 +21,6 @@ var palette = [4]uint8{
 	0x00, // Black
 }
 
-const (
-	AudioFreq    = 48000
-	AudioSamples = 512
-	Channels     = 2
-)
-
 func SDLInitialize() error {
 	return sdl.Init(sdl.INIT_EVERYTHING)
 }
@@ -38,7 +33,7 @@ type SDLWindow struct {
 	srcPic                    [constant.LCD_WIDTH * constant.LCD_HEIGHT]uint8
 	prevAction, prevDirection uint8
 	audioDevice               sdl.AudioDeviceID
-	audioBuffer               [][]C.Uint8
+	audioBuffer               [][]C.Float32 // NOTE: Access to this variable must be mutually excluded by sdl.LockAudioDevice(audioDevice).
 }
 
 func NewSDLWindow() (*SDLWindow, error) {
@@ -77,17 +72,17 @@ func NewSDLWindow() (*SDLWindow, error) {
 		width:       width,
 		height:      height,
 		srcPic:      [constant.LCD_WIDTH * constant.LCD_HEIGHT]uint8{},
-		audioBuffer: [][]C.Uint8{},
+		audioBuffer: [][]C.Float32{},
 	}
 
 	audioDevice, err := sdl.OpenAudioDevice(
 		"",
 		false,
 		&sdl.AudioSpec{
-			Freq:     AudioFreq,
-			Format:   sdl.AUDIO_U8,
-			Channels: Channels,
-			Samples:  AudioSamples,
+			Freq:     constant.AUDIO_FREQ,
+			Format:   sdl.AUDIO_F32,
+			Channels: constant.CHANNELS,
+			Samples:  constant.AUDIO_SAMPLES,
 			Callback: sdl.AudioCallback(C.OnAudioPlayback),
 			UserData: pointer.Save(wind),
 		},
@@ -219,16 +214,25 @@ func (wind *SDLWindow) UpdateScreen() error {
 	return nil
 }
 
-func (wind *SDLWindow) enqueueAudioBuffer(buf []uint8) error {
-	if len(buf) != AudioSamples*Channels {
+func (wind *SDLWindow) EnqueueAudioBuffer(buf []float32) error {
+	// Lock the device to avoid data race with OnAudioPlayback.
+	sdl.LockAudioDevice(wind.audioDevice)
+	defer sdl.UnlockAudioDevice(wind.audioDevice)
+
+	length := constant.AUDIO_SAMPLES * constant.CHANNELS
+	if len(buf) != length {
 		return fmt.Errorf("Invalid length of audio buffer")
+	}
+
+	if len(wind.audioBuffer) >= 10 {
+		wind.popAudioBuffer() // Discard the old one
 	}
 
 	// Copy buf to bufC.
 	// FIXME: Maybe there is faster technique.
-	bufC := make([]C.Uint8, AudioSamples)
+	bufC := make([]C.Float32, length)
 	for i, v := range buf {
-		bufC[i] = C.Uint8(v)
+		bufC[i] = C.Float32(v)
 	}
 
 	// Enqueue
@@ -237,7 +241,8 @@ func (wind *SDLWindow) enqueueAudioBuffer(buf []uint8) error {
 	return nil
 }
 
-func (wind *SDLWindow) popAudioBuffer() []C.Uint8 {
+// popAudioBuffer assumes that access to wind.audioBuffer is locked beforehand.
+func (wind *SDLWindow) popAudioBuffer() []C.Float32 {
 	if len(wind.audioBuffer) == 0 {
 		return nil
 	}
@@ -249,9 +254,9 @@ func (wind *SDLWindow) popAudioBuffer() []C.Uint8 {
 
 //export OnAudioPlayback
 func OnAudioPlayback(userdata unsafe.Pointer, stream *C.Uint8, length C.int) {
-	n := int(length)
+	n := int(length) / 4
 	hdr := reflect.SliceHeader{Data: uintptr(unsafe.Pointer(stream)), Len: n, Cap: n}
-	buf := *(*[]C.Uint8)(unsafe.Pointer(&hdr))
+	buf := *(*[]C.Float32)(unsafe.Pointer(&hdr))
 	wind := pointer.Restore(userdata).(*SDLWindow)
 	src := wind.popAudioBuffer()
 

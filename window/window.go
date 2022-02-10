@@ -11,4 +11,5 @@ type Window interface {
 	UpdateScreen() error
 	getTicks() int64
 	delay(val int64)
+	EnqueueAudioBuffer(buf []float32) error
 }

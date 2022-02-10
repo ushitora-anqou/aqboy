@@ -16,7 +16,6 @@ import (
 	"github.com/ushitora-anqou/aqboy/mmu"
 	"github.com/ushitora-anqou/aqboy/ppu"
 	"github.com/ushitora-anqou/aqboy/timer"
-	"github.com/ushitora-anqou/aqboy/util"
 	"github.com/ushitora-anqou/aqboy/window"
 )
 
@@ -75,22 +74,28 @@ LabelMainLoop:
 		joypad.SetDirection(event.Direction)
 		joypad.SetAction(event.Action)
 
-		// Compute
-		for cnt < constant.FRAME_TICKS { // Emulate one frame
+		// Emulate one frame
+		for cnt < constant.FRAME_TICKS {
 			tick, err := cpu.Step()
 			if err != nil {
 				return err
 			}
 			ppu.Update(tick)
 			timer.Update(tick)
+			if apu.Update(tick) {
+				err := wind.EnqueueAudioBuffer(apu.GetAudioBuffer())
+				if err != nil {
+					return err
+				}
+			}
 			cnt += int(tick)
 
-			util.Trace4("                af=%04x    bc=%04x    de=%04x    hl=%04x",
-				cpu.AF(), cpu.BC(), cpu.DE(), cpu.HL())
-			util.Trace6("                sp=%04x    pc=%04x    Z=%d  N=%d  H=%d  C=%d",
-				cpu.SP(), cpu.PC(), util.BoolToU8(cpu.FlagZ()), util.BoolToU8(cpu.FlagN()), util.BoolToU8(cpu.FlagH()), util.BoolToU8(cpu.FlagC()))
-			util.Trace2("                ime=%d      tima=%02x",
-				util.BoolToU8(cpu.IME()), timer.TIMA())
+			//util.Trace4("                af=%04x    bc=%04x    de=%04x    hl=%04x",
+			//	cpu.AF(), cpu.BC(), cpu.DE(), cpu.HL())
+			//util.Trace6("                sp=%04x    pc=%04x    Z=%d  N=%d  H=%d  C=%d",
+			//	cpu.SP(), cpu.PC(), util.BoolToU8(cpu.FlagZ()), util.BoolToU8(cpu.FlagN()), util.BoolToU8(cpu.FlagH()), util.BoolToU8(cpu.FlagC()))
+			//util.Trace2("                ime=%d      tima=%02x",
+			//	util.BoolToU8(cpu.IME()), timer.TIMA())
 
 			if breakpointAddr != nil && cpu.PC() == *breakpointAddr {
 				break LabelMainLoop

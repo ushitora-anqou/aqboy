@@ -690,7 +690,7 @@ func (cpu *CPU) Step() (uint, error) {
 	interruptTick := cpu.handleInterrupt()
 
 	if cpu.Halted() {
-		cpu.traceInst0("(halted)")
+		//cpu.traceInst0("(halted)")
 		return 4, nil
 	}
 

@@ -284,10 +284,6 @@ func (ppu *PPU) drawLineObjects(scanline []uint8) {
 }
 
 func (ppu *PPU) drawLine() error {
-	if !ppu.getLCDDisplayEnable() {
-		return nil
-	}
-
 	scanline := [constant.LCD_WIDTH]uint8{}
 	if ppu.getBGWindowDisplayPriority() {
 		ppu.drawLineBG(scanline[:])
@@ -327,6 +323,12 @@ func (ppu *PPU) updateLYCLYCoincidence() {
 }
 
 func (ppu *PPU) Update(elapsedTick uint) error {
+	if !ppu.getLCDDisplayEnable() {
+		// FIXME: More accurate behaviour is probably different.
+		// See also: https://github.com/linoscope/CAMLBOY/blob/ea0ac8e68c9aea216ef44fb997251f43070867b1/lib/gpu/gpu.ml#L255
+		return nil
+	}
+
 	ppu.tick += elapsedTick
 	if ppu.remainingTransferTick > 0 {
 		ppu.remainingTransferTick -= int(elapsedTick)

@@ -540,7 +540,7 @@ func (cpu *CPU) handleInterrupt() uint {
 			cpu.intFlag.clear()
 			cpu.SetIME(false)
 			cpu.SetHalted(false)
-			tick = 12 // FIXME: Correct?
+			tick = 20
 		}
 		break
 	}

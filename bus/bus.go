@@ -79,7 +79,7 @@ type PPU interface {
 	SetVRAM8(index uint16, val uint8)
 	GetOAM8(index uint16) uint8
 	SetOAM8(index uint16, val uint8)
-	TransferOAM(srcAddr uint8)
+	StartTransferOAM(srcAddr uint8)
 
 	LCDC() uint8
 	STAT() uint8

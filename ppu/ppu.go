@@ -13,6 +13,7 @@ type PPU struct {
 	oam                                                         [0xa0]uint8
 	scx, scy, bgp, obp0, obp1, lcdc, ly, lyc, wx, wy, wly, stat uint8
 	tick                                                        uint
+	remainingTransferTick                                       int
 }
 
 func NewPPU(bus *bus.Bus) *PPU {
@@ -327,6 +328,9 @@ func (ppu *PPU) updateLYCLYCoincidence() {
 
 func (ppu *PPU) Update(elapsedTick uint) error {
 	ppu.tick += elapsedTick
+	if ppu.remainingTransferTick > 0 {
+		ppu.remainingTransferTick -= int(elapsedTick)
+	}
 
 	switch {
 	case ppu.Mode() == 2 && ppu.tick >= 80: // OAM Search --> Pixel Transfer
@@ -338,7 +342,9 @@ func (ppu *PPU) Update(elapsedTick uint) error {
 		ppu.SetMode(0)
 		ppu.updateInterrupt()
 
-		ppu.drawLine()
+		if ppu.remainingTransferTick <= 0 {
+			ppu.drawLine()
+		}
 		if ppu.WX()-7 < constant.LCD_WIDTH && ppu.WY() <= ppu.LY() {
 			ppu.wly += 1
 		}
@@ -369,6 +375,7 @@ func (ppu *PPU) Update(elapsedTick uint) error {
 	return nil
 }
 
-func (ppu *PPU) TransferOAM(srcPrefix uint8) {
+func (ppu *PPU) StartTransferOAM(srcPrefix uint8) {
 	copy(ppu.oam[:], ppu.bus.MMU.GetSliceXX00(int(srcPrefix), 0xa0))
+	ppu.remainingTransferTick = 160
 }

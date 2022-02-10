@@ -121,7 +121,7 @@ func (mmu *MMU) Set8(addr uint16, val uint8) {
 		ppu.SetLYC(val)
 	case 0xff46:
 		util.Trace1("\t<<<WRITE: OMA DMA Transfer: 0x%02x>>>", val)
-		mmu.bus.PPU.TransferOAM(val)
+		mmu.bus.PPU.StartTransferOAM(val)
 	case 0xff47:
 		util.Trace1("\t<<<WRITE: BGP BG Palette Data Non CGB Mode Only: %08b>>>", val)
 		ppu.SetBGP(val)

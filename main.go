@@ -10,6 +10,7 @@ import (
 
 	"github.com/ushitora-anqou/aqboy/apu"
 	"github.com/ushitora-anqou/aqboy/bus"
+	"github.com/ushitora-anqou/aqboy/constant"
 	"github.com/ushitora-anqou/aqboy/cpu"
 	"github.com/ushitora-anqou/aqboy/joypad"
 	"github.com/ushitora-anqou/aqboy/mmu"
@@ -65,7 +66,7 @@ func doRun(wind window.Window) error {
 	// Main loop
 	synchronizer := window.NewTimeSynchronizer(wind, 60 /* FPS */)
 LabelMainLoop:
-	for {
+	for cnt := 0; ; {
 		// Handle inputs/events
 		event := wind.HandleEvents()
 		if event.Escape {
@@ -75,7 +76,7 @@ LabelMainLoop:
 		joypad.SetAction(event.Action)
 
 		// Compute
-		for cnt := 0; cnt < 456*154; { // Emulate one frame
+		for cnt < constant.FRAME_TICKS { // Emulate one frame
 			tick, err := cpu.Step()
 			if err != nil {
 				return err
@@ -95,6 +96,7 @@ LabelMainLoop:
 				break LabelMainLoop
 			}
 		}
+		cnt -= constant.FRAME_TICKS
 
 		// Draw
 		err := wind.UpdateScreen()

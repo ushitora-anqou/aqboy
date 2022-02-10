@@ -357,7 +357,7 @@ func (ppu *PPU) Update(elapsedTick uint) error {
 	case ppu.Mode() == 1 && ppu.tick >= 456: // V-Blank --> V-Blank | OAM Search
 		ppu.tick -= 456
 		ppu.ly += 1
-		if ppu.LY() == 155 { // V-Blank --> OAM Search
+		if ppu.LY() == 154 { // V-Blank --> OAM Search
 			ppu.ly = 0
 			ppu.wly = 0
 			ppu.SetMode(2)

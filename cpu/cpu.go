@@ -109,6 +109,10 @@ func (ib *InterruptBits) set(val uint8) {
 	*ib = InterruptBits(val)
 }
 
+func (ib *InterruptBits) clear() {
+	*ib = 0
+}
+
 type CPU struct {
 	bus                    *bus.Bus
 	pc, sp                 uint16
@@ -533,7 +537,7 @@ func (cpu *CPU) handleInterrupt() uint {
 		if cpu.IME() {
 			cpu.push16(cpu.PC())
 			cpu.SetPC(uint16(0x40 + 0x08*i))
-			cpu.intFlag.setN(i, false)
+			cpu.intFlag.clear()
 			cpu.SetIME(false)
 			cpu.SetHalted(false)
 			tick = 12 // FIXME: Correct?

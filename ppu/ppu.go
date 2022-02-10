@@ -4,12 +4,8 @@ import (
 	"sort"
 
 	"github.com/ushitora-anqou/aqboy/bus"
+	"github.com/ushitora-anqou/aqboy/constant"
 )
-
-const LCD_WIDTH = 160
-const LCD_HEIGHT = 144
-const BG_PX_WIDTH = 256
-const BG_PX_HEIGHT = 256
 
 type PPU struct {
 	bus                                                         *bus.Bus
@@ -223,7 +219,7 @@ func (ppu *PPU) fetchBGWindowTileColor(isBG bool, x, y int) uint8 {
 
 func (ppu *PPU) drawLineBG(scanline []uint8) {
 	y := int(ppu.ly + ppu.scy) // NOTE: wrap around
-	for ax := 0; ax < LCD_WIDTH; ax++ {
+	for ax := 0; ax < constant.LCD_WIDTH; ax++ {
 		x := int(uint8(ax) + ppu.scx) // NOTE: wrap around
 		scanline[ax] = ppu.fetchBGWindowTileColor(true, x, y)
 	}
@@ -234,7 +230,7 @@ func (ppu *PPU) drawLineWindow(scanline []uint8) {
 		return
 	}
 	y, wx, wy := int(ppu.LY()), int(ppu.WX()-7), int(ppu.WY())
-	for x := 0; x < LCD_WIDTH; x++ {
+	for x := 0; x < constant.LCD_WIDTH; x++ {
 		if x < wx || y < wy {
 			continue
 		}
@@ -279,7 +275,7 @@ func (ppu *PPU) drawLineObjects(scanline []uint8) {
 			paletteIdx, color := ppu.fetchTileColor(true, obj.tileIndex, paletteData, ox, oy)
 
 			x := int(obj.screenX()) + ax
-			if 0 <= x && x < LCD_WIDTH && paletteIdx != 0 /* transparent */ {
+			if 0 <= x && x < constant.LCD_WIDTH && paletteIdx != 0 /* transparent */ {
 				scanline[x] = color
 			}
 		}
@@ -291,7 +287,7 @@ func (ppu *PPU) drawLine() error {
 		return nil
 	}
 
-	scanline := [LCD_WIDTH]uint8{}
+	scanline := [constant.LCD_WIDTH]uint8{}
 	if ppu.getBGWindowDisplayPriority() {
 		ppu.drawLineBG(scanline[:])
 		ppu.drawLineWindow(scanline[:])
@@ -343,7 +339,7 @@ func (ppu *PPU) Update(elapsedTick uint) error {
 		ppu.updateInterrupt()
 
 		ppu.drawLine()
-		if ppu.WX()-7 < LCD_WIDTH && ppu.WY() <= ppu.LY() {
+		if ppu.WX()-7 < constant.LCD_WIDTH && ppu.WY() <= ppu.LY() {
 			ppu.wly += 1
 		}
 

@@ -10,7 +10,6 @@ import (
 
 	"github.com/mattn/go-pointer"
 	"github.com/ushitora-anqou/aqboy/constant"
-	"github.com/ushitora-anqou/aqboy/ppu"
 	"github.com/veandco/go-sdl2/sdl"
 )
 
@@ -36,14 +35,14 @@ type SDLWindow struct {
 	renderer                  *sdl.Renderer
 	texture                   *sdl.Texture
 	width, height             int32
-	srcPic                    [ppu.LCD_WIDTH * ppu.LCD_HEIGHT]uint8
+	srcPic                    [constant.LCD_WIDTH * constant.LCD_HEIGHT]uint8
 	prevAction, prevDirection uint8
 	audioDevice               sdl.AudioDeviceID
 	audioBuffer               [][]C.Uint8
 }
 
 func NewSDLWindow() (*SDLWindow, error) {
-	var width, height int32 = ppu.LCD_WIDTH * 5, ppu.LCD_HEIGHT * 5
+	var width, height int32 = constant.LCD_WIDTH * 5, constant.LCD_HEIGHT * 5
 	window, err := sdl.CreateWindow(
 		"aqboy",
 		sdl.WINDOWPOS_UNDEFINED,
@@ -64,8 +63,8 @@ func NewSDLWindow() (*SDLWindow, error) {
 	texture, err := renderer.CreateTexture(
 		sdl.PIXELFORMAT_ARGB8888,
 		sdl.TEXTUREACCESS_STREAMING,
-		ppu.LCD_WIDTH,
-		ppu.LCD_HEIGHT,
+		constant.LCD_WIDTH,
+		constant.LCD_HEIGHT,
 	)
 	if err != nil {
 		return nil, err
@@ -77,7 +76,7 @@ func NewSDLWindow() (*SDLWindow, error) {
 		texture:     texture,
 		width:       width,
 		height:      height,
-		srcPic:      [ppu.LCD_WIDTH * ppu.LCD_HEIGHT]uint8{},
+		srcPic:      [constant.LCD_WIDTH * constant.LCD_HEIGHT]uint8{},
 		audioBuffer: [][]C.Uint8{},
 	}
 
@@ -115,14 +114,14 @@ func (wind *SDLWindow) delay(val int64) {
 }
 
 func (wind *SDLWindow) DrawLine(ly int, scanline []uint8) error {
-	if len(scanline) != ppu.LCD_WIDTH {
+	if len(scanline) != constant.LCD_WIDTH {
 		return fmt.Errorf(
 			"Invalid length of scanline data: expected %d, got %d",
-			ppu.LCD_WIDTH,
+			constant.LCD_WIDTH,
 			len(scanline),
 		)
 	}
-	copy(wind.srcPic[ly*ppu.LCD_WIDTH:(ly+1)*ppu.LCD_WIDTH], scanline)
+	copy(wind.srcPic[ly*constant.LCD_WIDTH:(ly+1)*constant.LCD_WIDTH], scanline)
 	return nil
 }
 
@@ -200,9 +199,9 @@ func (wind *SDLWindow) UpdateScreen() error {
 	if err != nil {
 		return err
 	}
-	for row := 0; row < ppu.LCD_HEIGHT; row++ {
-		for col := 0; col < ppu.LCD_WIDTH; col++ {
-			off := row*ppu.LCD_WIDTH + col
+	for row := 0; row < constant.LCD_HEIGHT; row++ {
+		for col := 0; col < constant.LCD_WIDTH; col++ {
+			off := row*constant.LCD_WIDTH + col
 			color := palette[wind.srcPic[off]]
 			pixels[off*4+0] = color // b
 			pixels[off*4+1] = color // g

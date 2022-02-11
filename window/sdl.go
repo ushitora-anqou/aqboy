@@ -1,3 +1,5 @@
+// +build USE_SDL2
+
 package window
 
 // typedef float Float32;

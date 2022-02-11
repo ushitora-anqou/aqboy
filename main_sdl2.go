@@ -1,4 +1,4 @@
-// +build USE_SDL2
+// +build sdl2
 
 package main
 
@@ -42,12 +42,33 @@ func runSDL2() error {
 		return err
 	}
 
-	// Go emulation
+	// Build the emulator
 	aqboy, err := NewAQBoy(wind, romPath)
 	if err != nil {
 		return err
 	}
-	return aqboy.Run()
+
+	// Main loop
+	synchronizer := window.NewSDLTimeSynchronizer(60 /* FPS */)
+	for {
+		// Handle inputs/events
+		escape, event := wind.HandleEvents()
+		if escape {
+			break
+		}
+
+		// Update the emulator
+		aqboy.Update(event)
+
+		// Draw
+		err := wind.UpdateScreen()
+		if err != nil {
+			return err
+		}
+		synchronizer.MaySleep()
+	}
+
+	return nil
 }
 
 func main() {

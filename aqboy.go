@@ -21,6 +21,7 @@ type AQBoy struct {
 	apu    *apu.APU
 	joypad *joypad.Joypad
 	wind   window.Window
+	cnt    int
 }
 
 func NewAQBoy(wind window.Window, romPath string) (*AQBoy, error) {
@@ -39,10 +40,10 @@ func NewAQBoy(wind window.Window, romPath string) (*AQBoy, error) {
 	// Build up the bus
 	bus.Register(cpu, mmu, ppu, wind, timer, apu, joypad)
 
-	return &AQBoy{bus, cpu, ppu, mmu, timer, apu, joypad, wind}, nil
+	return &AQBoy{bus, cpu, ppu, mmu, timer, apu, joypad, wind, 0}, nil
 }
 
-func (a *AQBoy) Run() error {
+func (a *AQBoy) Update(event *window.WindowEvent) error {
 	cpu := a.cpu
 	ppu := a.ppu
 	timer := a.timer
@@ -50,49 +51,33 @@ func (a *AQBoy) Run() error {
 	joypad := a.joypad
 	wind := a.wind
 
-	// Main loop
-	synchronizer := window.NewTimeSynchronizer(wind, 60 /* FPS */)
-	for cnt := 0; ; {
-		// Handle inputs/events
-		event := wind.HandleEvents()
-		if event.Escape {
-			break
-		}
-		joypad.SetDirection(event.Direction)
-		joypad.SetAction(event.Action)
+	joypad.SetDirection(event.Direction)
+	joypad.SetAction(event.Action)
 
-		// Emulate one frame
-		for cnt < constant.FRAME_TICKS {
-			tick, err := cpu.Step()
-			if err != nil {
-				return err
-			}
-			ppu.Update(tick)
-			timer.Update(tick)
-			if apu.Update(tick) {
-				err := wind.EnqueueAudioBuffer(apu.GetAudioBuffer())
-				if err != nil {
-					return err
-				}
-			}
-			cnt += int(tick)
-
-			//util.Trace4("                af=%04x    bc=%04x    de=%04x    hl=%04x",
-			//	cpu.AF(), cpu.BC(), cpu.DE(), cpu.HL())
-			//util.Trace6("                sp=%04x    pc=%04x    Z=%d  N=%d  H=%d  C=%d",
-			//	cpu.SP(), cpu.PC(), util.BoolToU8(cpu.FlagZ()), util.BoolToU8(cpu.FlagN()), util.BoolToU8(cpu.FlagH()), util.BoolToU8(cpu.FlagC()))
-			//util.Trace2("                ime=%d      tima=%02x",
-			//	util.BoolToU8(cpu.IME()), timer.TIMA())
-		}
-		cnt -= constant.FRAME_TICKS
-
-		// Draw
-		err := wind.UpdateScreen()
+	// Emulate one frame
+	for a.cnt < constant.FRAME_TICKS {
+		tick, err := cpu.Step()
 		if err != nil {
 			return err
 		}
-		synchronizer.MaySleep()
+		ppu.Update(tick)
+		timer.Update(tick)
+		if apu.Update(tick) {
+			err := wind.EnqueueAudioBuffer(apu.GetAudioBuffer())
+			if err != nil {
+				return err
+			}
+		}
+		a.cnt += int(tick)
+
+		//util.Trace4("                af=%04x    bc=%04x    de=%04x    hl=%04x",
+		//	cpu.AF(), cpu.BC(), cpu.DE(), cpu.HL())
+		//util.Trace6("                sp=%04x    pc=%04x    Z=%d  N=%d  H=%d  C=%d",
+		//	cpu.SP(), cpu.PC(), util.BoolToU8(cpu.FlagZ()), util.BoolToU8(cpu.FlagN()), util.BoolToU8(cpu.FlagH()), util.BoolToU8(cpu.FlagC()))
+		//util.Trace2("                ime=%d      tima=%02x",
+		//	util.BoolToU8(cpu.IME()), timer.TIMA())
 	}
+	a.cnt -= constant.FRAME_TICKS
 
 	return nil
 }

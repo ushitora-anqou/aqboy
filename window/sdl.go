@@ -1,4 +1,4 @@
-// +build USE_SDL2
+//go:build sdl2
 
 package window
 
@@ -17,10 +17,10 @@ import (
 )
 
 var palette = [4]uint8{
-	0xff, // White
-	0xcc, // Light gray
-	0x44, // Dark gray
-	0x00, // Black
+	constant.COLOR_WHITE,
+	constant.COLOR_LIGHT_GRAY,
+	constant.COLOR_DARK_GRAY,
+	constant.COLOR_BLACK,
 }
 
 func SDLInitialize() error {
@@ -31,7 +31,6 @@ type SDLWindow struct {
 	window                    *sdl.Window
 	renderer                  *sdl.Renderer
 	texture                   *sdl.Texture
-	width, height             int32
 	srcPic                    [constant.LCD_WIDTH * constant.LCD_HEIGHT]uint8
 	prevAction, prevDirection uint8
 	audioDevice               sdl.AudioDeviceID
@@ -39,13 +38,12 @@ type SDLWindow struct {
 }
 
 func NewSDLWindow() (*SDLWindow, error) {
-	var width, height int32 = constant.LCD_WIDTH * 5, constant.LCD_HEIGHT * 5
 	window, err := sdl.CreateWindow(
-		"aqboy",
+		constant.WINDOW_TITLE,
 		sdl.WINDOWPOS_UNDEFINED,
 		sdl.WINDOWPOS_UNDEFINED,
-		width,
-		height,
+		constant.WINDOW_WIDTH,
+		constant.WINDOW_HEIGHT,
 		sdl.WINDOW_SHOWN,
 	)
 	if err != nil {
@@ -71,8 +69,6 @@ func NewSDLWindow() (*SDLWindow, error) {
 		window:      window,
 		renderer:    renderer,
 		texture:     texture,
-		width:       width,
-		height:      height,
 		srcPic:      [constant.LCD_WIDTH * constant.LCD_HEIGHT]uint8{},
 		audioBuffer: [][]C.Float32{},
 	}
@@ -100,16 +96,6 @@ func NewSDLWindow() (*SDLWindow, error) {
 	return wind, nil
 }
 
-func (wind *SDLWindow) getTicks() int64 {
-	return int64(sdl.GetTicks()) * 1000
-}
-
-func (wind *SDLWindow) delay(val int64) {
-	if val > 1000 { // Larger than 1ms
-		sdl.Delay(uint32(val / 1000))
-	}
-}
-
 func (wind *SDLWindow) DrawLine(ly int, scanline []uint8) error {
 	if len(scanline) != constant.LCD_WIDTH {
 		return fmt.Errorf(
@@ -122,16 +108,17 @@ func (wind *SDLWindow) DrawLine(ly int, scanline []uint8) error {
 	return nil
 }
 
-func (wind *SDLWindow) HandleEvents() *WindowEvent {
+func (wind *SDLWindow) HandleEvents() (bool, *WindowEvent) {
 	we := &WindowEvent{
 		Action:    wind.prevAction,
 		Direction: wind.prevDirection,
 	}
+	escape := false
 
 	for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
 		switch event.(type) {
 		case *sdl.QuitEvent:
-			we.Escape = true
+			escape = true
 			break
 
 		case *sdl.KeyboardEvent:
@@ -140,7 +127,7 @@ func (wind *SDLWindow) HandleEvents() *WindowEvent {
 			case sdl.KEYDOWN:
 				switch kbEvent.Keysym.Sym {
 				case sdl.K_ESCAPE:
-					we.Escape = true
+					escape = true
 				case sdl.K_w:
 					we.Direction |= (1 << constant.DIR_UP)
 				case sdl.K_a:
@@ -161,8 +148,6 @@ func (wind *SDLWindow) HandleEvents() *WindowEvent {
 
 			case sdl.KEYUP:
 				switch kbEvent.Keysym.Sym {
-				case sdl.K_ESCAPE:
-					we.Escape = false
 				case sdl.K_w:
 					we.Direction &^= (1 << constant.DIR_UP)
 				case sdl.K_a:
@@ -187,7 +172,7 @@ func (wind *SDLWindow) HandleEvents() *WindowEvent {
 	wind.prevAction = we.Action
 	wind.prevDirection = we.Direction
 
-	return we
+	return escape, we
 }
 
 func (wind *SDLWindow) UpdateScreen() error {
@@ -226,7 +211,7 @@ func (wind *SDLWindow) EnqueueAudioBuffer(buf []float32) error {
 		return fmt.Errorf("Invalid length of audio buffer")
 	}
 
-	if len(wind.audioBuffer) >= 10 {
+	if len(wind.audioBuffer) >= constant.AUDIO_QUEUE_SIZE {
 		wind.popAudioBuffer() // Discard the old one
 	}
 
@@ -269,4 +254,27 @@ func OnAudioPlayback(userdata unsafe.Pointer, stream *C.Uint8, length C.int) {
 	} else {
 		copy(buf, src)
 	}
+}
+
+type SDLTimeSynchronizer struct {
+	prevTicks, usPerFrame int64
+}
+
+func NewSDLTimeSynchronizer(targetFPS float64) *SDLTimeSynchronizer {
+	return &SDLTimeSynchronizer{
+		prevTicks:  int64(sdl.GetTicks()) * 1000,
+		usPerFrame: int64(1000000.0 / targetFPS),
+	}
+}
+
+func (ts *SDLTimeSynchronizer) MaySleep() {
+	cur := int64(sdl.GetTicks()) * 1000
+	if cur < ts.prevTicks {
+		return
+	}
+	diff := ts.usPerFrame - (cur - ts.prevTicks)
+	if diff > 1000 { // Larger than 1ms
+		sdl.Delay(uint32(diff / 1000))
+	}
+	ts.prevTicks += ts.usPerFrame
 }

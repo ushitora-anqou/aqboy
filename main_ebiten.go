@@ -57,7 +57,30 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	screen.ReplacePixels(pixels)
 }
 
-func runEbiten() error {
+func runEbiten(rom []uint8) error {
+	if err := window.EbitenInitialize(); err != nil {
+		return err
+	}
+
+	wind, err := window.NewEbitenWindow()
+	if err != nil {
+		return err
+	}
+
+	aqboy, err := NewAQBoy(wind, rom)
+	if err != nil {
+		return err
+	}
+
+	game, err := NewGame(wind, aqboy)
+	if err != nil {
+		return err
+	}
+
+	return ebiten.RunGame(game)
+}
+
+func run() error {
 	// Parse options and arguments
 	flag.Parse()
 	if flag.NArg() < 1 {
@@ -76,30 +99,16 @@ func runEbiten() error {
 		defer pprof.StopCPUProfile()
 	}
 
-	if err := window.EbitenInitialize(); err != nil {
-		return err
-	}
-
-	wind, err := window.NewEbitenWindow()
+	rom, err := os.ReadFile(romPath)
 	if err != nil {
 		return err
 	}
 
-	aqboy, err := NewAQBoy(wind, romPath)
-	if err != nil {
-		return err
-	}
-
-	game, err := NewGame(wind, aqboy)
-	if err != nil {
-		return err
-	}
-
-	return ebiten.RunGame(game)
+	return runEbiten(rom)
 }
 
 func main() {
-	err := runEbiten()
+	err := run()
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -30,8 +30,8 @@ type MMU struct {
 	wram, hram []uint8
 }
 
-func NewMMU(bus *bus.Bus, catridgeFilePath string) (*MMU, error) {
-	cat, err := NewMBC1Cartridge(catridgeFilePath)
+func NewMMU(bus *bus.Bus, rom []uint8) (*MMU, error) {
+	cat, err := NewMBC1Cartridge(rom)
 	if err != nil {
 		return nil, err
 	}

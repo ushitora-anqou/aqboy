@@ -42,8 +42,14 @@ func runSDL2() error {
 		return err
 	}
 
+	// Read the ROM
+	rom, err := os.ReadFile(romPath)
+	if err != nil {
+		return err
+	}
+
 	// Build the emulator
-	aqboy, err := NewAQBoy(wind, romPath)
+	aqboy, err := NewAQBoy(wind, rom)
 	if err != nil {
 		return err
 	}

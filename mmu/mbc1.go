@@ -3,7 +3,6 @@ package mmu
 import (
 	"fmt"
 	"log"
-	"os"
 )
 
 type MBC1Cartridge struct {
@@ -12,12 +11,7 @@ type MBC1Cartridge struct {
 	ramEnabled, largeROM                                   bool
 }
 
-func NewMBC1Cartridge(filePath string) (*MBC1Cartridge, error) {
-	src, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, err
-	}
-
+func NewMBC1Cartridge(src []uint8) (*MBC1Cartridge, error) {
 	// Catridge Type
 	catType := src[0x147]
 	if catType > 3 {

@@ -24,12 +24,12 @@ type AQBoy struct {
 	cnt    int
 }
 
-func NewAQBoy(wind window.Window, romPath string) (*AQBoy, error) {
+func NewAQBoy(wind window.Window, rom []uint8) (*AQBoy, error) {
 	// Build the components
 	bus := bus.NewBus()
 	cpu := cpu.NewCPU(bus)
 	ppu := ppu.NewPPU(bus)
-	mmu, err := mmu.NewMMU(bus, romPath)
+	mmu, err := mmu.NewMMU(bus, rom)
 	if err != nil {
 		return nil, err
 	}
